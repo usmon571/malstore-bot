@@ -29,13 +29,45 @@ def _connect(dsn: str) -> psycopg.Connection:
     return _conn
 
 
+def _reset() -> None:
+    global _conn
+    try:
+        if _conn is not None:
+            _conn.close()
+    except Exception:
+        pass
+    _conn = None
+
+
+def _exec(dsn: str, sql: str, params=None, fetch: str | None = None):
+    """So'rovni bajaradi; ulanish eskirgan bo'lsa qayta ulanib takrorlaydi.
+
+    Neon bo'sh turgan ulanishni yopadi va bu faqat so'rov paytida ma'lum
+    bo'ladi ("SSL connection has been closed unexpectedly") — shuning uchun
+    xatoni ulanish paytida emas, aynan shu yerda ushlash kerak.
+    """
+    for attempt in (1, 2):
+        try:
+            with _connect(dsn).cursor() as cur:
+                cur.execute(sql, params)
+                if fetch == "one":
+                    return cur.fetchone()
+                if fetch == "all":
+                    return cur.fetchall()
+                return None
+        except (psycopg.OperationalError, psycopg.InterfaceError) as e:
+            _reset()
+            if attempt == 2:
+                raise
+            log.warning("baza ulanishi eskirgan (%s) — qayta ulanamiz", type(e).__name__)
+
+
 def _cursor(dsn: str):
-    """Ulanish uzilgan bo'lsa bir marta qayta ulanadi (Neon uyqudan uyg'onadi)."""
+    """Ko'p bosqichli ishlar uchun (migratsiya skripti). Odatda _exec ishlatiladi."""
     try:
         return _connect(dsn).cursor()
     except psycopg.OperationalError:
-        global _conn
-        _conn = None
+        _reset()
         return _connect(dsn).cursor()
 
 
@@ -75,13 +107,13 @@ CREATE TABLE IF NOT EXISTS counters (
 
 
 def init(dsn: str) -> None:
-    with _cursor(dsn) as cur:
-        cur.execute(SCHEMA)
-        cur.execute(
-            "INSERT INTO counters (name, value) VALUES ('product', %s) "
-            "ON CONFLICT (name) DO NOTHING",
-            (FIRST_ID,),
-        )
+    _exec(dsn, SCHEMA)
+    _exec(
+        dsn,
+        "INSERT INTO counters (name, value) VALUES ('product', %s) "
+        "ON CONFLICT (name) DO NOTHING",
+        (FIRST_ID,),
+    )
     log.info("PostgreSQL tayyor")
 
 
@@ -89,131 +121,127 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _clean(product_id) -> str:
+    return str(product_id).strip().lstrip("#")
+
+
 # ---------- tovarlar ----------
 
 def next_product_id(dsn: str) -> str:
-    with _cursor(dsn) as cur:
-        cur.execute(
-            "UPDATE counters SET value = value + 1 WHERE name = 'product' RETURNING value"
-        )
-        return str(cur.fetchone()["value"])
+    row = _exec(
+        dsn,
+        "UPDATE counters SET value = value + 1 WHERE name = 'product' RETURNING value",
+        fetch="one",
+    )
+    return str(row["value"])
 
 
 def save_product(dsn: str, product_id, url, title, prices, arrival, caption, message_ids) -> None:
-    with _cursor(dsn) as cur:
-        cur.execute(
-            """INSERT INTO products (id, url, title, prices, arrival, caption, message_ids, created)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-               ON CONFLICT (id) DO UPDATE SET
-                 url=EXCLUDED.url, title=EXCLUDED.title, prices=EXCLUDED.prices,
-                 arrival=EXCLUDED.arrival, caption=EXCLUDED.caption,
-                 message_ids=EXCLUDED.message_ids""",
-            (product_id, url, title, json.dumps(prices, ensure_ascii=False), arrival,
-             caption, json.dumps(message_ids or [], ensure_ascii=False), _now()),
-        )
+    _exec(
+        dsn,
+        """INSERT INTO products
+             (id, url, title, prices, arrival, caption, message_ids, created)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+           ON CONFLICT (id) DO UPDATE SET
+             url=EXCLUDED.url, title=EXCLUDED.title, prices=EXCLUDED.prices,
+             arrival=EXCLUDED.arrival, caption=EXCLUDED.caption,
+             message_ids=EXCLUDED.message_ids""",
+        (product_id, url, title, json.dumps(prices, ensure_ascii=False), arrival,
+         caption, json.dumps(message_ids or [], ensure_ascii=False), _now()),
+    )
 
 
 def get_product(dsn: str, product_id: str) -> dict | None:
-    with _cursor(dsn) as cur:
-        cur.execute("SELECT * FROM products WHERE id = %s", (str(product_id).strip().lstrip("#"),))
-        return cur.fetchone()
+    return _exec(
+        dsn, "SELECT * FROM products WHERE id = %s", (_clean(product_id),), fetch="one"
+    )
 
 
 def update_product(dsn: str, product_id: str, **fields) -> dict | None:
-    if not fields:
-        return get_product(dsn, product_id)
     allowed = {"url", "title", "prices", "arrival", "caption", "message_ids"}
     sets, values = [], []
     for key, value in fields.items():
         if key not in allowed:
             continue
         sets.append(f"{key} = %s")
-        values.append(json.dumps(value, ensure_ascii=False) if key in ("prices", "message_ids") else value)
+        values.append(
+            json.dumps(value, ensure_ascii=False)
+            if key in ("prices", "message_ids") else value
+        )
     if not sets:
         return get_product(dsn, product_id)
-    values.append(str(product_id).strip().lstrip("#"))
-    with _cursor(dsn) as cur:
-        cur.execute(f"UPDATE products SET {', '.join(sets)} WHERE id = %s RETURNING *", values)
-        return cur.fetchone()
+    values.append(_clean(product_id))
+    return _exec(
+        dsn, f"UPDATE products SET {', '.join(sets)} WHERE id = %s RETURNING *",
+        values, fetch="one",
+    )
 
 
 def delete_product(dsn: str, product_id: str) -> dict | None:
-    with _cursor(dsn) as cur:
-        cur.execute(
-            "DELETE FROM products WHERE id = %s RETURNING *",
-            (str(product_id).strip().lstrip("#"),),
-        )
-        return cur.fetchone()
+    return _exec(
+        dsn, "DELETE FROM products WHERE id = %s RETURNING *",
+        (_clean(product_id),), fetch="one",
+    )
 
 
 def list_products(dsn: str, limit: int = 20) -> list[dict]:
-    with _cursor(dsn) as cur:
-        cur.execute("SELECT * FROM products ORDER BY created DESC LIMIT %s", (limit,))
-        return cur.fetchall()
+    return _exec(
+        dsn, "SELECT * FROM products ORDER BY created DESC LIMIT %s", (limit,), fetch="all"
+    )
 
 
 def product_count(dsn: str) -> int:
-    with _cursor(dsn) as cur:
-        cur.execute("SELECT COUNT(*) AS n FROM products")
-        return cur.fetchone()["n"]
+    return _exec(dsn, "SELECT COUNT(*) AS n FROM products", fetch="one")["n"]
 
 
 # ---------- buyurtmalar ----------
 
 def add_order(dsn: str, product_id, variant, user, phone, price, prepay) -> int:
-    with _cursor(dsn) as cur:
-        cur.execute("SELECT COALESCE(MAX(no), 0) + 1 AS next FROM orders")
-        order_no = cur.fetchone()["next"]
-        cur.execute(
-            """INSERT INTO orders
-               (no, product_id, variant, price, prepay, status, receipt,
-                user_id, username, name, phone, created)
-               VALUES (%s,%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s)""",
-            (order_no, product_id, variant, price, prepay, "to'lov kutilmoqda",
-             user.get("id"), user.get("username"), user.get("name"), phone, _now()),
-        )
-        return order_no
+    # Raqam bitta so'rov ichida hisoblanadi — alohida SELECT kerak emas
+    row = _exec(
+        dsn,
+        """INSERT INTO orders
+             (no, product_id, variant, price, prepay, status, receipt,
+              user_id, username, name, phone, created)
+           VALUES ((SELECT COALESCE(MAX(no), 0) + 1 FROM orders),
+                   %s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s)
+           RETURNING no""",
+        (product_id, variant, price, prepay, "to'lov kutilmoqda",
+         user.get("id"), user.get("username"), user.get("name"), phone, _now()),
+        fetch="one",
+    )
+    return row["no"]
 
 
 def get_order(dsn: str, order_no: int) -> dict | None:
-    with _cursor(dsn) as cur:
-        cur.execute("SELECT * FROM orders WHERE no = %s", (order_no,))
-        return cur.fetchone()
+    return _exec(dsn, "SELECT * FROM orders WHERE no = %s", (order_no,), fetch="one")
 
 
 def set_order_status(dsn: str, order_no: int, status: str) -> dict | None:
-    with _cursor(dsn) as cur:
-        cur.execute(
-            "UPDATE orders SET status = %s WHERE no = %s RETURNING *", (status, order_no)
-        )
-        return cur.fetchone()
+    return _exec(
+        dsn, "UPDATE orders SET status = %s WHERE no = %s RETURNING *",
+        (status, order_no), fetch="one",
+    )
 
 
 def mark_paid(dsn: str, order_no: int, receipt_file_id: str) -> dict | None:
-    with _cursor(dsn) as cur:
-        cur.execute(
-            "UPDATE orders SET receipt = %s, status = %s WHERE no = %s RETURNING *",
-            (receipt_file_id, "chek yuborilgan", order_no),
-        )
-        return cur.fetchone()
+    return _exec(
+        dsn, "UPDATE orders SET receipt = %s, status = %s WHERE no = %s RETURNING *",
+        (receipt_file_id, "chek yuborilgan", order_no), fetch="one",
+    )
 
 
 def recent_orders(dsn: str, limit: int = 15) -> list[dict]:
-    with _cursor(dsn) as cur:
-        cur.execute("SELECT * FROM orders ORDER BY no DESC LIMIT %s", (limit,))
-        return cur.fetchall()
+    return _exec(
+        dsn, "SELECT * FROM orders ORDER BY no DESC LIMIT %s", (limit,), fetch="all"
+    )
 
 
 # ---------- adminlar ----------
 
 def remember_admin(dsn: str, user_id: int) -> None:
-    with _cursor(dsn) as cur:
-        cur.execute(
-            "INSERT INTO admins (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (user_id,)
-        )
+    _exec(dsn, "INSERT INTO admins (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (user_id,))
 
 
 def admin_ids(dsn: str) -> list[int]:
-    with _cursor(dsn) as cur:
-        cur.execute("SELECT user_id FROM admins")
-        return [row["user_id"] for row in cur.fetchall()]
+    return [row["user_id"] for row in _exec(dsn, "SELECT user_id FROM admins", fetch="all")]
