@@ -1,14 +1,18 @@
 """
-Tovarlar va buyurtmalar uchun oddiy saqlagich (JSON fayl).
+Tovarlar va buyurtmalar saqlagichi.
 
-Botning o'zi xotirada ishlaydi va post yuborilgach hammasini unutadi —
-shu modul esa tovarni ID bilan saqlab qoladi, keyin xaridor o'sha ID
-orqali (kanaldagi havola bosilganda) buyurtma bera oladi.
+Ikki rejimda ishlaydi:
+  - DATABASE_URL berilgan bo'lsa  -> PostgreSQL (Neon), db.py orqali
+  - berilmagan bo'lsa             -> JSON fayl (kompyuterda ishlash uchun)
+
+Ikkalasi ham bir xil ko'rinishdagi lug'at qaytaradi, shuning uchun bot
+kodi qaysi saqlagich ishlayotganini bilmaydi.
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -19,6 +23,24 @@ import settings
 # Railway'da bu Volume yo'li bo'ladi — aks holda fayl har deployda yo'qoladi
 STORE_FILE = settings.DATA_DIR / "store.json"
 FIRST_ID = 100
+
+DSN = os.getenv("DATABASE_URL", "").strip()
+USE_DB = bool(DSN)
+
+if USE_DB:
+    import db
+    try:
+        db.init(DSN)
+    except Exception as e:
+        # Jimgina JSON'ga qaytmaymiz — aks holda ma'lumot ikki joyga bo'linib,
+        # bazadagi buyurtmalar ko'rinmay qoladi.
+        raise SystemExit(
+            f"PostgreSQL'ga ulanib bo'lmadi: {type(e).__name__}: {e}\n"
+            "DATABASE_URL to'g'riligini va baza ishlayotganini tekshiring."
+        ) from e
+    log.info("Saqlagich: PostgreSQL")
+else:
+    log.info("Saqlagich: JSON fayl (%s)", STORE_FILE)
 
 
 def _empty() -> dict:
@@ -61,6 +83,8 @@ def _save(data: dict) -> None:
 
 
 def next_product_id() -> str:
+    if USE_DB:
+        return db.next_product_id(DSN)
     data = _load()
     data["counter"] += 1
     _save(data)
@@ -71,6 +95,9 @@ def save_product(
     product_id: str, url: str, title: str, prices: dict, arrival: str,
     caption: str = "", message_ids: list[int] | None = None,
 ) -> None:
+    if USE_DB:
+        db.save_product(DSN, product_id, url, title, prices, arrival, caption, message_ids)
+        return
     data = _load()
     data["products"][product_id] = {
         "id": product_id,
@@ -86,10 +113,14 @@ def save_product(
 
 
 def get_product(product_id: str) -> dict | None:
+    if USE_DB:
+        return db.get_product(DSN, product_id)
     return _load()["products"].get(str(product_id).strip().lstrip("#"))
 
 
 def update_product(product_id: str, **fields) -> dict | None:
+    if USE_DB:
+        return db.update_product(DSN, product_id, **fields)
     data = _load()
     product = data["products"].get(str(product_id).strip().lstrip("#"))
     if not product:
@@ -100,6 +131,8 @@ def update_product(product_id: str, **fields) -> dict | None:
 
 
 def delete_product(product_id: str) -> dict | None:
+    if USE_DB:
+        return db.delete_product(DSN, product_id)
     data = _load()
     product = data["products"].pop(str(product_id).strip().lstrip("#"), None)
     if product:
@@ -108,6 +141,8 @@ def delete_product(product_id: str) -> dict | None:
 
 
 def list_products(limit: int = 20) -> list[dict]:
+    if USE_DB:
+        return db.list_products(DSN, limit)
     return list(reversed(list(_load()["products"].values())))[:limit]
 
 
@@ -116,6 +151,8 @@ def add_order(
     price: str = "", prepay: str = "",
 ) -> int:
     """Buyurtmani saqlaydi va uning raqamini qaytaradi."""
+    if USE_DB:
+        return db.add_order(DSN, product_id, variant, user, phone, price, prepay)
     data = _load()
     order_no = len(data["orders"]) + 1
     data["orders"].append({
@@ -137,6 +174,8 @@ def add_order(
 
 
 def get_order(order_no: int) -> dict | None:
+    if USE_DB:
+        return db.get_order(DSN, order_no)
     for order in _load()["orders"]:
         if order["no"] == order_no:
             return order
@@ -144,6 +183,8 @@ def get_order(order_no: int) -> dict | None:
 
 
 def set_order_status(order_no: int, status: str) -> dict | None:
+    if USE_DB:
+        return db.set_order_status(DSN, order_no, status)
     data = _load()
     for order in data["orders"]:
         if order["no"] == order_no:
@@ -154,6 +195,8 @@ def set_order_status(order_no: int, status: str) -> dict | None:
 
 
 def mark_paid(order_no: int, receipt_file_id: str) -> dict | None:
+    if USE_DB:
+        return db.mark_paid(DSN, order_no, receipt_file_id)
     """Chek kelgach buyurtmani belgilaydi."""
     data = _load()
     for order in data["orders"]:
@@ -166,14 +209,21 @@ def mark_paid(order_no: int, receipt_file_id: str) -> dict | None:
 
 
 def recent_orders(limit: int = 15) -> list[dict]:
+    if USE_DB:
+        return db.recent_orders(DSN, limit)
     return list(reversed(_load()["orders"]))[:limit]
 
 
 def product_count() -> int:
+    if USE_DB:
+        return db.product_count(DSN)
     return len(_load()["products"])
 
 
 def remember_admin(user_id: int) -> None:
+    if USE_DB:
+        db.remember_admin(DSN, user_id)
+        return
     """Admin botga yozganda uning ID'si eslab qolinadi — yangi buyurtma
     haqida xabar yuborish uchun (config'da ID emas, username bor)."""
     data = _load()
@@ -183,4 +233,6 @@ def remember_admin(user_id: int) -> None:
 
 
 def admin_ids() -> list[int]:
+    if USE_DB:
+        return db.admin_ids(DSN)
     return _load()["admins"]
