@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+
+# Maxfiy ma'lumotlar — hech qachon git'ga tushmasin
+.env
+config.json
+
+# Ma'lumot va vaqtinchalik fayllar
+store.json
+translation_cache.json
+poizon_session.json
+bot.log
+login_screen.png

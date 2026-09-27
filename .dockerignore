@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+.env
+config.json
+store.json
+translation_cache.json
+bot.log
+deploy/
+start_bot.bat

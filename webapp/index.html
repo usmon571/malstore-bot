@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MalStore</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #0f0f0f);
+    --hint: var(--tg-theme-hint-color, #8a8a8e);
+    --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --accent: var(--tg-theme-button-color, #2ea6ff);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --line: color-mix(in srgb, var(--hint) 25%, transparent);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:12px 12px 90px;
+    background:var(--bg); color:var(--text);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  .card{background:var(--card); border-radius:14px; padding:14px; margin-bottom:12px}
+  .label{font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--hint); margin-bottom:8px}
+  textarea,input{
+    width:100%; border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+    background:var(--bg); color:var(--text); font:inherit; outline:none;
+  }
+  textarea{resize:vertical; min-height:70px}
+  input:focus,textarea:focus{border-color:var(--accent)}
+  .row{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .size{flex:0 0 76px; font-weight:700}
+  .cny{flex:1; min-width:0}
+  .out{flex:0 0 auto; font-size:13px; font-weight:700; color:var(--accent); white-space:nowrap}
+  .muted{font-size:12.5px; color:var(--hint)}
+  .chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+  .chip{
+    border:1px solid var(--line); border-radius:999px; padding:6px 13px;
+    font-size:13px; font-weight:600; background:var(--bg); color:var(--text); cursor:pointer;
+  }
+  .chip.on{background:var(--accent); color:var(--accent-text); border-color:var(--accent)}
+  .total{display:flex; justify-content:space-between; align-items:baseline; padding:7px 0}
+  .total b{font-size:17px}
+  .preview{white-space:pre-wrap; font-size:13.5px; line-height:1.5}
+  .warn{color:#e0533d; font-size:12.5px; margin-top:8px; display:none}
+  .sendbtn{
+    width:100%; border:none; border-radius:12px; padding:15px;
+    background:var(--accent); color:var(--accent-text);
+    font:600 16px/1 inherit; cursor:pointer;
+  }
+  .sendbtn:disabled{opacity:.45}
+  .openbtn{
+    width:100%; border:1px solid var(--accent); border-radius:10px; padding:11px;
+    background:transparent; color:var(--accent);
+    font:600 14.5px/1 inherit; cursor:pointer; margin-bottom:12px;
+  }
+  h2{margin:0 0 4px; font-size:17px}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="label">Mahsulot nomi</div>
+  <textarea id="title" rows="3"></textarea>
+  <div class="muted" style="margin-top:6px">Tarjima g'aliz bo'lsa — shu yerda tahrirlang</div>
+</div>
+
+<div class="card">
+  <div class="label">Poizon narxi (¥)</div>
+  <button id="openApp" class="openbtn" style="display:none">📱 Poizon ilovasida ochish</button>
+  <div id="rows"></div>
+  <div class="muted" id="rateNote"></div>
+  <div class="warn" id="warn">Barcha variantlar uchun narx kiriting</div>
+</div>
+
+<div class="card" id="deliveryCard" style="display:none">
+  <div class="label">Yetkazib berish (so'm)</div>
+  <input id="delivery" inputmode="decimal" placeholder="masalan: 35000">
+  <div class="muted" id="deliveryNote" style="margin-top:6px">
+    Vaznni aniqlay olmadim — yetkazib berish narxini o'zingiz kiriting.
+  </div>
+</div>
+
+<div class="card">
+  <div class="label">Ustama</div>
+  <input id="markup" inputmode="decimal" placeholder="masalan: 10% yoki 300000">
+  <div class="chips">
+    <button class="chip" data-m="5%">5%</button>
+    <button class="chip on" data-m="10%">10%</button>
+    <button class="chip" data-m="15%">15%</button>
+    <button class="chip" data-m="20%">20%</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="label">Yakuniy narxlar</div>
+  <div id="totals"></div>
+</div>
+
+<div class="card">
+  <div class="label" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Post matni ✏️</span>
+    <button class="chip" id="reset" style="display:none">↻ Avtomatik</button>
+  </div>
+  <textarea id="preview" rows="16" spellcheck="false"></textarea>
+  <div class="muted" id="editNote" style="margin-top:6px">
+    Narx va nomni o'zgartirsangiz bu matn o'zi yangilanadi. Qo'lda tahrirlasangiz — o'zgarmay turadi.
+  </div>
+</div>
+
+<button id="send" class="sendbtn">📤 Botga yuborish</button>
+<div class="warn" id="sendErr"></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+tg?.ready(); tg?.expand();
+
+function b64decode(s){
+  // URL-xavfsiz base64 → matn (UTF-8)
+  let t = s.replace(/-/g, "+").replace(/_/g, "/");
+  while(t.length % 4) t += "=";
+  return decodeURIComponent(escape(atob(t)));
+}
+
+function loadData(){
+  // Telegram "#" qismini o'zi egallaydi (tgWebAppData), shuning uchun
+  // ma'lumot "?d=" orqali keladi. Hash — zaxira variant.
+  const fromQuery = new URLSearchParams(location.search).get("d");
+  const fromHash  = location.hash.slice(1).split("&")[0];
+  for(const src of [fromQuery, fromHash]){
+    if(!src) continue;
+    try{ return JSON.parse(b64decode(src)); }catch(e){}
+  }
+  return {title:"", variants:[{label:"Narx", weightKg:null}], rate:1761.49,
+          kargoRate:83880, arrival:"", specs:{},
+          channel:"@malstoreoriginal", brand:"Original"};
+}
+const D = loadData();
+
+const titleEl  = document.getElementById("title");
+const rowsEl   = document.getElementById("rows");
+const markupEl = document.getElementById("markup");
+const previewEl= document.getElementById("preview");
+const resetBtn = document.getElementById("reset");
+const deliveryEl = document.getElementById("delivery");
+let edited = false;  // post matni qo'lda tahrirlandimi
+titleEl.value = D.title || "";
+markupEl.value = "10%";
+document.getElementById("rateNote").textContent =
+  `Kurs: 1 ¥ = ${fmtNum(D.rate)} so'm · Avto Kargo: ${fmtNum(D.kargoRate)} so'm/kg`;
+
+// Variantlar: bot {label, weightKg} ko'rinishida yuboradi.
+// (eski ko'rinish — sizes: [50,100] — ham qo'llab-quvvatlanadi)
+const VARIANTS = D.variants || (D.sizes || [0]).map(s => ({
+  label: s ? `${Number(s)} ml` : "Narx",
+  weightKg: s ? (Number(s) + (D.overhead || 250)) / 1000 : null,
+}));
+
+VARIANTS.forEach((v, i)=>{
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="size">${v.label}</div>
+     <div class="cny"><input inputmode="decimal" placeholder="¥" data-i="${i}"></div>
+     <div class="out" data-out="${i}">—</div>`;
+  rowsEl.appendChild(row);
+});
+
+function trim(n){ return Number(n).toString(); }
+function fmtNum(n){ return Math.round(n).toLocaleString("ru-RU").replace(/ /g," "); }
+function fmtUzs(n){ return fmtNum(Math.round(n/1000)*1000) + " so'm"; }
+
+function applyMarkup(base, text){
+  const t = (text||"").trim().replace(/\s/g,"").replace(",",".");
+  if(!t) return null;
+  if(t.endsWith("%")){
+    const p = parseFloat(t.slice(0,-1));
+    return isNaN(p) ? null : base*(1+p/100);
+  }
+  const v = parseFloat(t);
+  return isNaN(v) ? null : base+v;
+}
+
+function calc(){
+  const markupText = markupEl.value;
+  const finals = {}, lines = [];
+  let missing = false;
+
+  VARIANTS.forEach((v, i)=>{
+    const input = rowsEl.querySelector(`input[data-i="${i}"]`);
+    const out   = rowsEl.querySelector(`[data-out="${i}"]`);
+    const cny   = parseFloat((input.value||"").replace(",","."));
+    if(isNaN(cny)){ out.textContent = "—"; missing = true; return; }
+
+    const base = cny * D.rate;
+    // Vazn ma'lum bo'lsa — o'zi hisoblanadi, bo'lmasa qo'lda kiritilgani
+    const deliv = v.weightKg
+      ? v.weightKg * D.kargoRate
+      : (parseFloat((deliveryEl.value||"").replace(/[\s,]/g,"")) || 0);
+    const fin = applyMarkup(base + deliv, markupText);
+    if(fin === null){ out.textContent = "—"; missing = true; return; }
+
+    out.textContent = fmtUzs(fin);
+    finals[v.label] = fmtUzs(fin);
+    lines.push({label: v.label, weightKg: v.weightKg, cny, base, deliv, fin});
+  });
+
+  document.getElementById("warn").style.display = missing ? "block" : "none";
+
+  document.getElementById("totals").innerHTML = lines.length
+    ? lines.map(l=>{
+        const detail = l.weightKg
+          ? `${fmtUzs(l.base)} + 🚚 ${fmtUzs(l.deliv)} · ${l.weightKg.toFixed(2)} kg`
+          : (l.deliv
+              ? `${fmtUzs(l.base)} + 🚚 ${fmtUzs(l.deliv)}`
+              : `${fmtUzs(l.base)} · yetkazib berish kiritilmagan`);
+        return `<div class="total"><span>🏷 ${l.label}
+          <div class="muted">${detail}</div></span><b>${fmtUzs(l.fin)}</b></div>`;
+      }).join("")
+    : `<div class="muted">Narxlarni kiriting</div>`;
+
+  // Qo'lda tahrirlanmagan bo'lsa — matnni yangilab turamiz
+  if(!edited) previewEl.value = buildPreview(finals);
+
+  const ready = !missing && Object.keys(finals).length > 0;
+  const sendBtn = document.getElementById("send");
+  if(sendBtn) sendBtn.disabled = !ready;
+
+  if(tg?.MainButton){
+    try{
+      if(ready) tg.MainButton.setText("Botga yuborish").show().enable();
+      else tg.MainButton.hide();
+    }catch(e){}
+  }
+  return finals;
+}
+
+function buildPreview(finals){
+  const L = [];
+  if(titleEl.value.trim()) L.push("✨ " + titleEl.value.trim(), "");
+  L.push("➖➖➖➖➖➖➖➖➖➖");
+  L.push(`💎 100% ${(D.brand||"Original").toUpperCase()}`);
+  L.push("🔍 Poizon (得物) rasmiy tekshiruvidan o'tgan");
+  L.push("📦 Original quti va hujjatlari bilan");
+  L.push("➖➖➖➖➖➖➖➖➖➖");
+  const specs = Object.entries(D.specs||{});
+  if(specs.length){
+    L.push("", "📋 Xususiyatlari:");
+    specs.forEach(([k,v]) => L.push(`▪️ ${k}: ${v}`));
+  }
+  const keys = Object.keys(finals);
+  if(keys.length){
+    L.push("");
+    if(keys.length === 1) L.push(`💰 Narxi: ${finals[keys[0]]}`);
+    else{
+      L.push("💰 Narxlari:");
+      keys.forEach(k => L.push(`🧴 ${k} — ${finals[k]}`));
+    }
+  }
+  if(D.arrival) L.push(`🚚 Yetkazib berish: ${D.arrival}`);
+  L.push("");
+  L.push(D.channel || "");
+  return L.join("\n");
+}
+
+// Post matni qo'lda tahrirlanganini kuzatamiz
+previewEl.addEventListener("input", ()=>{
+  edited = true;
+  resetBtn.style.display = "inline-block";
+  document.getElementById("editNote").textContent =
+    "Matn qo'lda tahrirlandi — avtomatik yangilanmaydi.";
+});
+resetBtn.addEventListener("click", ()=>{
+  edited = false;
+  resetBtn.style.display = "none";
+  document.getElementById("editNote").textContent =
+    "Narx va nomni o'zgartirsangiz bu matn o'zi yangilanadi. Qo'lda tahrirlasangiz — o'zgarmay turadi.";
+  calc();
+});
+
+// Vazni noma'lum variant bo'lsa — yetkazib berish maydonini ko'rsatamiz
+if(VARIANTS.some(v => !v.weightKg)){
+  document.getElementById("deliveryCard").style.display = "block";
+}
+deliveryEl.addEventListener("input", calc);
+
+rowsEl.addEventListener("input", calc);
+titleEl.addEventListener("input", calc);
+markupEl.addEventListener("input", ()=>{
+  document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on"));
+  calc();
+});
+document.querySelectorAll(".chip").forEach(chip=>{
+  chip.addEventListener("click", ()=>{
+    document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on"));
+    chip.classList.add("on");
+    markupEl.value = chip.dataset.m;
+    calc();
+  });
+});
+
+function submit(){
+  const errEl = document.getElementById("sendErr");
+  errEl.style.display = "none";
+
+  const finals = calc();
+  if(!Object.keys(finals).length){
+    errEl.textContent = "Avval barcha hajmlar uchun narx kiriting";
+    errEl.style.display = "block";
+    return;
+  }
+  const payload = JSON.stringify({
+    title: titleEl.value.trim(),
+    prices: finals,
+    markup: markupEl.value.trim(),
+    caption: previewEl.value,
+  });
+
+  // Telegram sendData uchun chegara — 4096 bayt
+  if(new Blob([payload]).size > 4000){
+    errEl.textContent = "Matn juda uzun — qisqartiring";
+    errEl.style.display = "block";
+    return;
+  }
+  try{
+    if(!tg || !tg.sendData) throw new Error("Telegram ichida ochilmagan");
+    tg.sendData(payload);
+  }catch(e){
+    errEl.textContent = "Yuborilmadi: " + e.message;
+    errEl.style.display = "block";
+  }
+}
+
+document.getElementById("send").addEventListener("click", submit);
+tg?.MainButton?.onClick(submit);
+
+// Poizon ilovasida ochish: openLink tashqi brauzerda ochadi, u esa
+// ilovaga uzatadi (Telegram ichki brauzeri ilovaga o'tkazmaydi)
+const openBtn = document.getElementById("openApp");
+if(D.productUrl){
+  openBtn.style.display = "block";
+  openBtn.addEventListener("click", ()=>{
+    try{
+      if(tg?.openLink) tg.openLink(D.productUrl, {try_instant_view:false});
+      else window.open(D.productUrl, "_blank");
+    }catch(e){
+      window.open(D.productUrl, "_blank");
+    }
+  });
+}
+
+calc();
+</script>
+</body>
+</html>
