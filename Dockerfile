@@ -18,8 +18,10 @@ RUN python -m playwright install --with-deps chromium
 
 COPY . .
 
-# Ma'lumotlar Volume'ga yoziladi (Railway'da /data ga ulanadi)
-ENV DATA_DIR=/data
-VOLUME ["/data"]
+# Tovar va buyurtmalar PostgreSQL (Neon) da saqlanadi.
+# Bu papkada faqat tarjima keshi turadi — u yo'qolsa ham muammo yo'q.
+# (Railway Dockerfile'dagi VOLUME ko'rsatmasini qabul qilmaydi, shuning
+# uchun doimiy disk kerak bo'lsa Railway Volume alohida ulanadi.)
+ENV DATA_DIR=/app/data
 
 CMD ["python", "bot.py"]
