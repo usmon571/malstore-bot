@@ -62,6 +62,32 @@ def get_list(name: str, env: str) -> list[str]:
 BOT_TOKEN = get("bot_token", "BOT_TOKEN", "")
 CHANNEL = get("channel", "CHANNEL", "")
 ALLOWED_USERNAMES = get_list("allowed_usernames", "ALLOWED_USERNAMES")
+def _admin_ids() -> list[int]:
+    """Xabar yuboriladigan admin chat ID'lari.
+
+    Bot admin ID'sini u botga yozganda o'zi eslab qoladi (store.remember_admin),
+    lekin yangi serverda yoki baza tozalangandan keyin bu ro'yxat bo'sh bo'ladi —
+    o'shanda savol va tugallanmagan buyurtma xabarlari hech kimga bormaydi.
+    Shuning uchun ID'ni oldindan berib qo'yish mumkin:
+        ADMIN_ID=844679956          yoki
+        ADMIN_IDS=844679956,1234567
+    """
+    raw = get_list("admin_ids", "ADMIN_IDS")
+    single = os.getenv("ADMIN_ID") or _FILE.get("admin_id")
+    if single:
+        raw.append(str(single))
+
+    ids: list[int] = []
+    for value in raw:
+        try:
+            ids.append(int(str(value).strip()))
+        except ValueError:
+            print(f"ADMIN_ID son emas, tashlab ketildi: {value!r}")
+    return list(dict.fromkeys(ids))  # takrorlanmasin, tartib saqlansin
+
+
+ADMIN_IDS = _admin_ids()
+
 BRAND_LABEL = get("brand_label", "BRAND_LABEL", "Original")
 MAX_IMAGES = int(get("max_images", "MAX_IMAGES", 12))
 WEBAPP_URL = str(get("webapp_url", "WEBAPP_URL", "")).rstrip("#")

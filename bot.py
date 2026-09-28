@@ -41,6 +41,7 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
     MessageHandler,
+    TypeHandler,
     filters,
 )
 
@@ -71,8 +72,9 @@ TG_ALBUM_LIMIT = 10  # Telegram sendMediaGroup bir xabarda ko'pi bilan 10 ta qab
     WAITING_EDIT,
     ORDER_CONTACT,
     ORDER_RECEIPT,
+    ORDER_QUESTION,
     PRODUCT_EDIT,
-) = range(8)
+) = range(9)
 
 # Xaridor buyurtmani tashlab ketsa, shuncha daqiqadan keyin holat tozalanadi
 ORDER_TIMEOUT_MINUTES = settings.ORDER_TIMEOUT_MINUTES
@@ -300,6 +302,81 @@ async def deny(update: Update) -> None:
     )
 
 
+# ---------- adminga xabar yuborish ----------
+
+def admin_targets() -> list[int]:
+    """Sozlamadagi ADMIN_ID'lar + botga yozib ID'si eslab qolingan adminlar.
+
+    Ikkalasi birlashtiriladi: sozlama yangi serverda ham ishlaydi, eslab
+    qolingani esa config o'zgarmasdan yangi admin qo'shilganda ishlaydi.
+    """
+    ids = list(settings.ADMIN_IDS)
+    try:
+        ids += store.admin_ids()
+    except Exception as e:
+        log.warning("admin ro'yxati bazadan olinmadi: %s", e)
+    return list(dict.fromkeys(ids))
+
+
+def customer_line(user) -> str:
+    """"Ism Familiya (@username)" — xabarda mijozni ko'rsatish uchun."""
+    if not user:
+        return "—"
+    line = html.escape(user.full_name or str(user.id))
+    if user.username:
+        line += f" (@{html.escape(user.username)})"
+    return line
+
+
+def reply_button(user) -> InlineKeyboardMarkup | None:
+    """«Javob berish» — bosilganda mijoz bilan chat ochiladi.
+
+    Username bo'lsa oddiy t.me havolasi, bo'lmasa tg://user?id=... —
+    ikkinchisi Telegram'ning rasmiy ilovalarida chatni ochadi.
+    """
+    if not user:
+        return None
+    url = f"https://t.me/{user.username}" if user.username else f"tg://user?id={user.id}"
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("💬 Javob berish", url=url)]]
+    )
+
+
+async def notify_admins(
+    context: ContextTypes.DEFAULT_TYPE, text: str, keyboard=None
+) -> int:
+    """Barcha adminlarga xabar yuboradi, nechtasiga yetgani qaytadi."""
+    delivered = 0
+    for admin in admin_targets():
+        try:
+            await context.bot.send_message(
+                chat_id=admin, text=text, parse_mode="HTML",
+                reply_markup=keyboard, disable_web_page_preview=True,
+            )
+            delivered += 1
+        except BadRequest as e:
+            # tg://user?id=... tugmasini Telegram ba'zan qabul qilmaydi —
+            # xabarning o'zi yo'qolib ketmasin, tugmasiz qayta yuboramiz
+            log.warning("adminga tugma bilan ketmadi (%s): %s", admin, e)
+            try:
+                await context.bot.send_message(
+                    chat_id=admin, text=text, parse_mode="HTML",
+                    disable_web_page_preview=True,
+                )
+                delivered += 1
+            except Exception as inner:
+                log.warning("adminga xabar yetmadi (%s): %s", admin, inner)
+        except Exception as e:
+            log.warning("adminga xabar yetmadi (%s): %s", admin, e)
+
+    if not delivered:
+        log.warning(
+            "Xabar hech bir adminga yetmadi. ADMIN_ID sozlanganmi? "
+            "(hozirgi ro'yxat: %s)", admin_targets() or "bo'sh"
+        )
+    return delivered
+
+
 SPEC_EMOJI = {
     "Xushbo'y hid turi": "🌳",
     "Eng sezilarli hid": "👃",
@@ -452,18 +529,27 @@ async def show_product_for_order(
     lines.append("")
     lines.append("Qaysi variantni olasiz?")
 
+    await update.message.reply_text(
+        "\n".join(lines), parse_mode="HTML",
+        reply_markup=order_keyboard(product),
+    )
+    return ORDER_CONTACT
+
+
+def order_keyboard(product: dict) -> InlineKeyboardMarkup:
+    """Variant tugmalari + «Savol berish» + «Bekor qilish»."""
     prices = product.get("prices", {})
     buttons = [
         [InlineKeyboardButton(f"{label} — {price}", callback_data=f"buy:{i}")]
         for i, (label, price) in enumerate(prices.items())
     ]
+    # Tovar raqami callback ichida yuradi — tugma eski xabardan, suhbat
+    # tugaganidan keyin bosilsa ham tovarni topa olamiz
+    buttons.append([
+        InlineKeyboardButton("❓ Savol berish", callback_data=f"ask:{product.get('id', '')}")
+    ])
     buttons.append([InlineKeyboardButton("❌ Bekor qilish", callback_data="buy:cancel")])
-
-    await update.message.reply_text(
-        "\n".join(lines), parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(buttons),
-    )
-    return ORDER_CONTACT
+    return InlineKeyboardMarkup(buttons)
 
 
 async def handle_order_variant(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -498,6 +584,89 @@ async def handle_order_variant(update: Update, context: ContextTypes.DEFAULT_TYP
     return ORDER_CONTACT
 
 
+def product_summary(context: ContextTypes.DEFAULT_TYPE) -> list[str]:
+    """Adminga ketadigan xabarlarda takrorlanadigan tovar qatorlari."""
+    product = context.user_data.get("order_product", {})
+    variant = context.user_data.get("order_variant", "")
+    prices = product.get("prices", {})
+    # Variant tanlangan bo'lsa o'shaning narxi, bo'lmasa hammasi
+    price_text = prices.get(variant) or " · ".join(prices.values()) or "—"
+
+    lines = [
+        f"🛍 <b>{html.escape(product.get('title', '')[:60])}</b>",
+        f"🆔 {product.get('id', '—')} · 💰 {html.escape(price_text)}",
+    ]
+    if variant:
+        lines.append(f"📦 Variant: {html.escape(variant)}")
+    return lines
+
+
+async def ask_question_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Mijoz «❓ Savol berish» tugmasini bosdi."""
+    query = update.callback_query
+    await query.answer()
+
+    product_id = query.data.split(":", 1)[1]
+    product = context.user_data.get("order_product")
+    # Suhbat vaqti tugaganidan keyin bosilgan bo'lsa — tovarni qayta topamiz
+    if not product or str(product.get("id")) != product_id:
+        product = store.get_product(product_id)
+        if not product:
+            await query.message.reply_text(
+                "Tovar topilmadi. Tovar raqamini yuboring (masalan: 101)."
+            )
+            return ConversationHandler.END
+        context.user_data["order_product"] = product
+        context.user_data.pop("order_variant", None)
+
+    await query.message.reply_text(
+        "❓ Savolingizni yozing — operator tez orada javob beradi.\n"
+        "Bekor qilish: /cancel",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return ORDER_QUESTION
+
+
+async def handle_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Savol matni keldi — adminga yuboramiz."""
+    question = (update.message.text or "").strip()
+    if len(question) < 3:
+        await update.message.reply_text("Savolni to'liqroq yozing.")
+        return ORDER_QUESTION
+
+    product = context.user_data.get("order_product", {})
+    user = update.effective_user
+
+    lines = ["❓ <b>Yangi savol</b>", ""]
+    lines += product_summary(context)
+    lines.append(f"👤 {customer_line(user)}")
+    if context.user_data.get("phone"):
+        lines.append(f"📞 {html.escape(context.user_data['phone'])}")
+    lines.append("")
+    lines.append(f"💬 <i>{html.escape(question)}</i>")
+
+    await notify_admins(context, "\n".join(lines), reply_button(user))
+
+    await update.message.reply_text(
+        "✅ Savolingiz operatorga yuborildi — tez orada javob beradi."
+    )
+
+    # Savol bergani buyurtmani to'xtatmasin — mijozni o'z bosqichiga qaytaramiz
+    if context.user_data.get("order_no"):
+        await update.message.reply_text(
+            "📸 To'lov chekini shu yerga yuborishingiz mumkin."
+        )
+        return ORDER_RECEIPT
+    if product.get("prices"):
+        await update.message.reply_text(
+            "Buyurtma berishda davom etasizmi?",
+            reply_markup=order_keyboard(product),
+        )
+        return ORDER_CONTACT
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
 async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     message = update.message
     phone = message.contact.phone_number if message.contact else (message.text or "").strip()
@@ -526,6 +695,7 @@ async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     context.user_data["order_no"] = order_no
     context.user_data["prepay"] = prepay_text
+    context.user_data["phone"] = phone
 
     lines = [
         f"📋 Buyurtma <b>#{order_no}</b> rasmiylashtirildi",
@@ -587,7 +757,7 @@ async def handle_order_receipt(update: Update, context: ContextTypes.DEFAULT_TYP
         + f"\n🔗 {product.get('url', '')}"
     )
     keyboard = status_keyboard(order_no)
-    for admin in store.admin_ids():
+    for admin in admin_targets():
         try:
             if message.photo:
                 await context.bot.send_photo(
@@ -1356,8 +1526,56 @@ async def handle_product_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ConversationHandler.END
 
 
+def abandon_stage(data: dict) -> str:
+    """Mijoz qaysi bosqichda to'xtaganini aniqlaydi."""
+    if data.get("order_no"):
+        return "to'lov cheki yuborilmadi"
+    if data.get("order_variant"):
+        return "telefon raqami qoldirilmadi"
+    return "variant tanlanmadi"
+
+
+async def notify_abandoned(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Buyurtmani boshlab tugatmagan mijoz haqida adminga xabar."""
+    data = context.user_data
+    if not data.get("order_product"):
+        return  # tovargacha ham yetmagan — xabar qilishga arzimaydi
+
+    order_no = data.get("order_no")
+    user = update.effective_user
+
+    lines = ["⚠️ <b>Tugallanmagan buyurtma</b>", ""]
+    lines += product_summary(context)
+    if order_no:
+        lines.append(
+            f"📋 Buyurtma #{order_no} · 💳 oldindan to'lov "
+            f"{html.escape(data.get('prepay', '—'))}"
+        )
+    lines.append(f"👤 {customer_line(user)}")
+    if data.get("phone"):
+        lines.append(f"📞 {html.escape(data['phone'])}")
+    lines.append("")
+    lines.append(
+        f"⏳ To'xtagan joyi: <b>{abandon_stage(data)}</b> "
+        f"({ORDER_TIMEOUT_MINUTES} daqiqa javob bo'lmadi)"
+    )
+
+    if order_no:
+        try:
+            store.set_order_status(order_no, "tugallanmagan")
+        except Exception as e:
+            log.warning("buyurtma holati yangilanmadi (#%s): %s", order_no, e)
+
+    await notify_admins(context, "\n".join(lines), reply_button(user))
+
+
 async def order_timeout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Buyurtma yarim yo'lda qolib ketgan — holatni tozalaymiz."""
+    """Buyurtma yarim yo'lda qolib ketgan — adminni ogohlantirib, tozalaymiz."""
+    try:
+        await notify_abandoned(update, context)
+    except Exception:
+        # Xabar ketmasa ham mijozning holati baribir tozalanishi kerak
+        log.exception("tugallanmagan buyurtma haqida xabar yuborilmadi")
     context.user_data.clear()
     if update.effective_message:
         await update.effective_message.reply_text(
@@ -1436,7 +1654,9 @@ def main() -> None:
             ],
             WAITING_CONFIRM: [
                 webapp_handler,
-                CallbackQueryHandler(handle_confirm, pattern=r"^(?!buy:)"),
+                # buy: va ask: xaridor oqiminiki — adminning tasdiq
+                # tugmalari bilan aralashib ketmasin
+                CallbackQueryHandler(handle_confirm, pattern=r"^(?!buy:|ask:)"),
             ],
             WAITING_EDIT: [
                 webapp_handler,
@@ -1451,23 +1671,32 @@ def main() -> None:
         entry_points=[
             CommandHandler("start", start),
             MessageHandler(filters.Regex(r"^#?\d{1,6}$"), start_order_by_id),
+            # «Savol berish» eski xabardan ham ishlasin
+            CallbackQueryHandler(ask_question_start, pattern=r"^ask:"),
         ],
         states={
             ORDER_CONTACT: [
                 CallbackQueryHandler(handle_order_variant, pattern=r"^buy:"),
+                CallbackQueryHandler(ask_question_start, pattern=r"^ask:"),
                 MessageHandler(
                     filters.CONTACT | (filters.TEXT & ~filters.COMMAND),
                     handle_order_contact,
                 ),
             ],
+            ORDER_QUESTION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question),
+            ],
             ORDER_RECEIPT: [
+                CallbackQueryHandler(ask_question_start, pattern=r"^ask:"),
                 MessageHandler(
                     filters.PHOTO | filters.Document.ALL | (filters.TEXT & ~filters.COMMAND),
                     handle_order_receipt,
                 ),
             ],
+            # TypeHandler — chunki oxirgi yangilanish tugma bosilishi ham
+            # bo'lishi mumkin, u holda MessageHandler ishlamay qoladi
             ConversationHandler.TIMEOUT: [
-                MessageHandler(filters.ALL, order_timeout),
+                TypeHandler(Update, order_timeout),
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
