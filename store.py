@@ -62,7 +62,10 @@ def _load() -> dict:
 
 
 # Yangi imkoniyatlar qo'shilganda eski yozuvlarda bu maydonlar bo'lmaydi
-ORDER_DEFAULTS = {"price": "", "prepay": "", "status": "to'lov kutilmoqda", "receipt": None}
+ORDER_DEFAULTS = {
+    "price": "", "prepay": "", "size": "",
+    "status": "to'lov kutilmoqda", "receipt": None,
+}
 PRODUCT_DEFAULTS = {"caption": "", "message_ids": []}
 
 
@@ -148,17 +151,18 @@ def list_products(limit: int = 20) -> list[dict]:
 
 def add_order(
     product_id: str, variant: str, user: dict, phone: str,
-    price: str = "", prepay: str = "",
+    price: str = "", prepay: str = "", size: str = "",
 ) -> int:
     """Buyurtmani saqlaydi va uning raqamini qaytaradi."""
     if USE_DB:
-        return db.add_order(DSN, product_id, variant, user, phone, price, prepay)
+        return db.add_order(DSN, product_id, variant, user, phone, price, prepay, size)
     data = _load()
     order_no = len(data["orders"]) + 1
     data["orders"].append({
         "no": order_no,
         "product_id": product_id,
         "variant": variant,
+        "size": size,
         "price": price,
         "prepay": prepay,
         "status": "to'lov kutilmoqda",

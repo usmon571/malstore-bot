@@ -70,11 +70,13 @@ TG_ALBUM_LIMIT = 10  # Telegram sendMediaGroup bir xabarda ko'pi bilan 10 ta qab
     WAITING_MARKUP,
     WAITING_CONFIRM,
     WAITING_EDIT,
+    ORDER_SIZE,
     ORDER_CONTACT,
     ORDER_RECEIPT,
     ORDER_QUESTION,
+    ADMIN_REPLY,
     PRODUCT_EDIT,
-) = range(9)
+) = range(11)
 
 # Xaridor buyurtmani tashlab ketsa, shuncha daqiqadan keyin holat tozalanadi
 ORDER_TIMEOUT_MINUTES = settings.ORDER_TIMEOUT_MINUTES
@@ -137,6 +139,70 @@ LIQUID_HINTS = (
 def is_liquid_product(product) -> bool:
     text = f"{product.title_zh} {product.title}".lower()
     return any(hint.lower() in text for hint in LIQUID_HINTS)
+
+
+# Sarlavhada shu so'zlardan biri bo'lsa — oyoq kiyim, o'lchash qo'llanmasi
+# yuboriladi. Topilmasa ham razmer so'raladi (kiyim bo'lishi mumkin).
+SHOE_HINTS = (
+    "鞋", "运动鞋", "板鞋", "跑鞋", "靴", "拖鞋", "凉鞋",
+    "krossovka", "krosovka", "botinka", "tufli", "oyoq kiyim",
+    "sneaker", "shoe", "boot", "sandal", "slipper", "loafer", "trainer",
+    "air force", "air max", "air jordan", "jordan", "yeezy", "dunk",
+    "samba", "gazelle", "campus", "superstar", "ultraboost", "new balance",
+)
+# Atir narxlari "50 ml" ko'rinishida bo'ladi — bunda razmer so'ralmaydi
+ML_LABEL_RE = re.compile(r"\d\s*ml\b", re.I)
+
+
+def needs_size(product: dict) -> bool:
+    """Atir/suyuqlikdan boshqa hamma narsada razmer so'raladi."""
+    labels = " ".join(product.get("prices", {}).keys())
+    if ML_LABEL_RE.search(labels):
+        return False
+    title = product.get("title", "").lower()
+    return not any(hint.lower() in title for hint in LIQUID_HINTS)
+
+
+def is_footwear(product: dict) -> bool:
+    title = product.get("title", "").lower()
+    return any(hint.lower() in title for hint in SHOE_HINTS)
+
+
+SIZE_GUIDE = (
+    "📐 <b>Oyoq o'lchamini qanday aniqlash</b>\n\n"
+    "1️⃣ Oq qog'ozni yerga qo'yib, bir chetini devorga tirang.\n"
+    "2️⃣ Tovoningiz devorga tegib tursin — qog'oz ustida tik turing.\n"
+    "3️⃣ Eng uzun barmoq uchini qalam bilan belgilang.\n"
+    "4️⃣ Devordan belgigacha masofani <b>santimetrda</b> o'lchang.\n\n"
+    "💡 Kechqurun o'lchang — kun davomida oyoq biroz kengayadi.\n"
+    "💡 Ikkala oyoqni o'lchab, kattasini oling.\n"
+    "💡 Paypoq bilan o'lchang.\n\n"
+    "📊 <b>Taxminiy jadval (EU):</b>\n"
+    "<pre>"
+    "22.0 sm — 35     26.0 sm — 41\n"
+    "22.5 sm — 36     26.5 sm — 42\n"
+    "23.0 sm — 37     27.0 sm — 43\n"
+    "23.5 sm — 37.5   27.5 sm — 43.5\n"
+    "24.0 sm — 38     28.0 sm — 44\n"
+    "24.5 sm — 39     28.5 sm — 45\n"
+    "25.0 sm — 39.5   29.0 sm — 46\n"
+    "25.5 sm — 40.5   29.5 sm — 46.5"
+    "</pre>\n"
+    "Ikkilansangiz santimetrni ham yozing (masalan: <b>26.5 sm</b>) — "
+    "operator tekshirib beradi."
+)
+
+LETTER_SIZES = {"xs", "s", "m", "l", "xl", "xxl", "xxxl", "2xl", "3xl", "4xl"}
+
+
+def clean_size(text: str) -> str | None:
+    """Kiritilgan razmerni tozalaydi. Tushunarsiz bo'lsa None."""
+    value = " ".join(text.split())[:20].strip()
+    if not value:
+        return None
+    if value.lower().replace(" ", "") in LETTER_SIZES:
+        return value.upper()
+    return value if any(ch.isdigit() for ch in value) else None
 
 
 MKEXPRESS_URL = "https://mkexpress.uz/en"
@@ -328,18 +394,25 @@ def customer_line(user) -> str:
     return line
 
 
-def reply_button(user) -> InlineKeyboardMarkup | None:
-    """«Javob berish» — bosilganda mijoz bilan chat ochiladi.
+def reply_rows(user) -> list[list[InlineKeyboardButton]]:
+    """Adminga ketadigan xabarlardagi javob tugmalari.
 
-    Username bo'lsa oddiy t.me havolasi, bo'lmasa tg://user?id=... —
-    ikkinchisi Telegram'ning rasmiy ilovalarida chatni ochadi.
+    Birinchisi — bot orqali javob: mijoz javobni shu botdan oladi, ya'ni
+    admin o'zining shaxsiy raqamini/akkauntini ochib qo'ymaydi va yozishmalar
+    bot ichida qoladi. Ikkinchisi — kerak bo'lsa shaxsiy chatni ochish.
     """
     if not user:
-        return None
+        return []
     url = f"https://t.me/{user.username}" if user.username else f"tg://user?id={user.id}"
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("💬 Javob berish", url=url)]]
-    )
+    return [
+        [InlineKeyboardButton("✍️ Bot orqali javob berish", callback_data=f"rep:{user.id}")],
+        [InlineKeyboardButton("👤 Shaxsiy chatda ochish", url=url)],
+    ]
+
+
+def reply_button(user) -> InlineKeyboardMarkup | None:
+    rows = reply_rows(user)
+    return InlineKeyboardMarkup(rows) if rows else None
 
 
 async def notify_admins(
@@ -375,6 +448,101 @@ async def notify_admins(
             "(hozirgi ro'yxat: %s)", admin_targets() or "bo'sh"
         )
     return delivered
+
+
+async def relay_to_admins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mijozning erkin xabarini operatorga yetkazadi.
+
+    Shu tufayli yozishmalar bot ichida ko'rinadi — admin mijozning
+    shaxsiy chatiga kirmasdan ham savol-javobni kuzata oladi.
+    """
+    message = update.effective_message
+    user = update.effective_user
+    text = (message.text or message.caption or "").strip()
+
+    lines = ["💬 <b>Mijozdan xabar</b>", "", f"👤 {customer_line(user)}"]
+    product = context.user_data.get("order_product")
+    if product:
+        lines.append(
+            f"🛍 {html.escape(product.get('title', '')[:50])} "
+            f"(🆔 {product.get('id', '')})"
+        )
+    if text:
+        lines.append("")
+        lines.append(html.escape(text))
+
+    keyboard = reply_button(user)
+    if message.photo:
+        # Rasmni ham ko'rsatamiz — "shu tovarmi?" degan savollar uchun
+        for admin in admin_targets():
+            try:
+                await context.bot.send_photo(
+                    chat_id=admin, photo=message.photo[-1].file_id,
+                    caption="\n".join(lines), parse_mode="HTML",
+                    reply_markup=keyboard,
+                )
+            except Exception as e:
+                log.warning("mijoz rasmi adminga yetmadi (%s): %s", admin, e)
+        return
+    await notify_admins(context, "\n".join(lines), keyboard)
+
+
+# ---------- admin bot orqali javob beradi ----------
+
+async def admin_reply_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """«✍️ Bot orqali javob berish» tugmasi bosildi."""
+    query = update.callback_query
+    if not is_allowed(update):
+        await query.answer("Sizda ruxsat yo'q", show_alert=True)
+        return ConversationHandler.END
+    await query.answer()
+
+    context.user_data["reply_to"] = int(query.data.split(":")[1])
+    await query.message.reply_text(
+        "✍️ Javobingizni yozing — mijozga <b>bot nomidan</b> yuboriladi.\n"
+        "Rasm ham yuborishingiz mumkin.\n\n"
+        "Bekor qilish: /cancel",
+        parse_mode="HTML",
+    )
+    return ADMIN_REPLY
+
+
+async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    customer_id = context.user_data.get("reply_to")
+    message = update.message
+    if not customer_id:
+        await message.reply_text("Kimga javob berishni topa olmadim. Tugmani qaytadan bosing.")
+        return ConversationHandler.END
+
+    header = "👤 <b>Operator:</b>"
+    try:
+        if message.photo:
+            caption = f"{header}\n{html.escape(message.caption or '')}".strip()
+            await context.bot.send_photo(
+                chat_id=customer_id, photo=message.photo[-1].file_id,
+                caption=caption, parse_mode="HTML",
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=customer_id,
+                text=f"{header}\n\n{html.escape(message.text or '')}",
+                parse_mode="HTML",
+            )
+        await message.reply_text(
+            "✅ Mijozga yuborildi.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                "✍️ Yana yozish", callback_data=f"rep:{customer_id}"
+            )]]),
+        )
+    except Exception as e:
+        log.warning("mijozga javob yetmadi (%s): %s", customer_id, e)
+        await message.reply_text(
+            f"❌ Yuborilmadi: {e}\n"
+            "Mijoz botni bloklagan yoki chatni o'chirgan bo'lishi mumkin."
+        )
+
+    context.user_data.pop("reply_to", None)
+    return ConversationHandler.END
 
 
 SPEC_EMOJI = {
@@ -533,7 +701,30 @@ async def show_product_for_order(
         "\n".join(lines), parse_mode="HTML",
         reply_markup=order_keyboard(product),
     )
+    await notify_order_started(update, context, product)
     return ORDER_CONTACT
+
+
+async def notify_order_started(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, product: dict
+) -> None:
+    """Mijoz «🛒 Buyurtma berish» tugmasini bosdi — admin darhol bilsin."""
+    user = update.effective_user
+    if not user or user.id in admin_targets():
+        return  # admin o'z havolasini tekshirayotgan bo'lsa xabar kerak emas
+    # Bir tovarni qayta-qayta ochsa, takror xabar bormasin
+    if context.user_data.get("notified_product") == product.get("id"):
+        return
+    context.user_data["notified_product"] = product.get("id")
+
+    lines = ["🛒 <b>Mijoz zakaz qilyapti</b>", ""]
+    lines += product_summary(context)
+    lines.append(f"👤 {customer_line(user)}")
+
+    try:
+        await notify_admins(context, "\n".join(lines), reply_button(user))
+    except Exception:
+        log.exception("«zakaz boshlandi» xabari yuborilmadi")
 
 
 def order_keyboard(product: dict) -> InlineKeyboardMarkup:
@@ -574,7 +765,57 @@ async def handle_order_variant(update: Update, context: ContextTypes.DEFAULT_TYP
         f"{html.escape(product['prices'][labels[index]])}",
         parse_mode="HTML",
     )
-    await query.message.reply_text(
+
+    if needs_size(product):
+        return await ask_for_size(query.message, product)
+    return await ask_for_phone(query.message)
+
+
+async def ask_for_size(message, product: dict) -> int:
+    """Razmerni so'raydi; oyoq kiyim bo'lsa o'lchash qo'llanmasi bilan."""
+    if is_footwear(product):
+        await message.reply_text(SIZE_GUIDE, parse_mode="HTML")
+        await message.reply_text(
+            "📏 <b>Razmeringizni kiriting.</b>\n"
+            "Masalan: <b>42</b> yoki <b>26.5 sm</b>",
+            parse_mode="HTML",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+    else:
+        await message.reply_text(
+            "📏 <b>Razmeringizni kiriting.</b>\n"
+            "Masalan: <b>42</b>, <b>26.5 sm</b> yoki <b>M</b> / <b>L</b> / <b>XL</b>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                "📐 Oyoq o'lchamini qanday o'lchash", callback_data="size:guide"
+            )]]),
+        )
+    return ORDER_SIZE
+
+
+async def send_size_guide(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """«Qanday o'lchash» tugmasi — qo'llanmani yuboradi, bosqich o'zgarmaydi."""
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text(SIZE_GUIDE, parse_mode="HTML")
+    return ORDER_SIZE
+
+
+async def handle_order_size(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    size = clean_size(update.message.text or "")
+    if not size:
+        await update.message.reply_text(
+            "Razmerni tushunmadim. Raqam bilan yozing — masalan: 42 yoki 26.5 sm"
+        )
+        return ORDER_SIZE
+
+    context.user_data["order_size"] = size
+    await update.message.reply_text(f"📏 Razmer: <b>{html.escape(size)}</b>", parse_mode="HTML")
+    return await ask_for_phone(update.message)
+
+
+async def ask_for_phone(message) -> int:
+    await message.reply_text(
         "📞 Telefon raqamingizni yuboring — operator siz bilan bog'lanadi.",
         reply_markup=ReplyKeyboardMarkup(
             [[KeyboardButton("📱 Raqamni yuborish", request_contact=True)]],
@@ -598,6 +839,8 @@ def product_summary(context: ContextTypes.DEFAULT_TYPE) -> list[str]:
     ]
     if variant:
         lines.append(f"📦 Variant: {html.escape(variant)}")
+    if context.user_data.get("order_size"):
+        lines.append(f"📏 Razmer: {html.escape(context.user_data['order_size'])}")
     return lines
 
 
@@ -671,11 +914,21 @@ async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYP
     message = update.message
     phone = message.contact.phone_number if message.contact else (message.text or "").strip()
     if len(phone) < 7:
+        # Raqamda hech bo'lmasa bitta son bo'ladi — sonsiz matn bu savol,
+        # ya'ni mijoz yozmoqchi. Uni javobsiz qoldirmay operatorga yetkazamiz.
+        if not any(ch.isdigit() for ch in phone):
+            await relay_to_admins(update, context)
+            await message.reply_text(
+                "✅ Xabaringiz operatorga yuborildi — tez orada javob beradi.\n\n"
+                "Buyurtmani davom ettirish uchun telefon raqamingizni yuboring."
+            )
+            return ORDER_CONTACT
         await message.reply_text("Raqam to'g'ri ko'rinmayapti. Masalan: +998901234567")
         return ORDER_CONTACT
 
     product = context.user_data.get("order_product", {})
     variant = context.user_data.get("order_variant", "")
+    size = context.user_data.get("order_size", "")
     if not product:
         await message.reply_text("Buyurtma ma'lumoti yo'qoldi. Qaytadan boshlang.")
         return ConversationHandler.END
@@ -692,6 +945,7 @@ async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYP
         phone=phone,
         price=price_text,
         prepay=prepay_text,
+        size=size,
     )
     context.user_data["order_no"] = order_no
     context.user_data["prepay"] = prepay_text
@@ -702,6 +956,10 @@ async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYP
         "",
         f"🛍 {html.escape(product['title'][:60])}",
         f"📦 {html.escape(variant)} — {html.escape(price_text)}",
+    ]
+    if size:
+        lines.append(f"📏 Razmer: <b>{html.escape(size)}</b>")
+    lines += [
         "",
         f"💳 <b>Oldindan to'lov ({PREPAY_SHARE:.0%}): {html.escape(prepay_text)}</b>",
         f"   Qolgani tovar kelganda to'lanadi.",
@@ -750,13 +1008,15 @@ async def handle_order_receipt(update: Update, context: ContextTypes.DEFAULT_TYP
         f"🔔 <b>Yangi buyurtma #{order_no}</b> — to'lov cheki\n\n"
         f"🆔 Tovar: {product.get('id', '')} — {html.escape(product.get('title', '')[:55])}\n"
         f"📦 {html.escape(variant)} — {html.escape(order.get('price', '—') if order else '—')}\n"
-        f"💳 Oldindan to'lov: {html.escape(context.user_data.get('prepay', '—'))}\n"
+        + (f"📏 Razmer: {html.escape(context.user_data['order_size'])}\n"
+           if context.user_data.get("order_size") else "")
+        + f"💳 Oldindan to'lov: {html.escape(context.user_data.get('prepay', '—'))}\n"
         f"📞 {html.escape(order.get('phone', '—') if order else '—')}\n"
         f"👤 {html.escape(user.full_name)}"
         + (f" (@{user.username})" if user.username else "")
         + f"\n🔗 {product.get('url', '')}"
     )
-    keyboard = status_keyboard(order_no)
+    keyboard = status_keyboard(order_no, user.id)
     for admin in admin_targets():
         try:
             if message.photo:
@@ -802,7 +1062,7 @@ ORDER_STATUSES = {
 }
 
 
-def status_keyboard(order_no: int) -> InlineKeyboardMarkup:
+def status_keyboard(order_no: int, customer_id: int | None = None) -> InlineKeyboardMarkup:
     keys = list(ORDER_STATUSES)
     rows = [
         [
@@ -813,6 +1073,10 @@ def status_keyboard(order_no: int) -> InlineKeyboardMarkup:
         ]
         for i in range(0, len(keys), 2)
     ]
+    if customer_id:
+        rows.append([InlineKeyboardButton(
+            "✍️ Bot orqali javob berish", callback_data=f"rep:{customer_id}"
+        )])
     return InlineKeyboardMarkup(rows)
 
 
@@ -846,7 +1110,9 @@ async def handle_status_change(update: Update, context: ContextTypes.DEFAULT_TYP
 
     note = "xaridorga xabar yuborildi" if delivered else "⚠️ xaridorga xabar yetmadi"
     try:
-        await query.edit_message_reply_markup(reply_markup=status_keyboard(order_no))
+        await query.edit_message_reply_markup(
+            reply_markup=status_keyboard(order_no, order.get("user_id"))
+        )
         await query.message.reply_text(f"#{order_no} → {label} · {note}")
     except Exception:
         pass
@@ -872,7 +1138,8 @@ async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"🆔 {order['product_id']} {html.escape(product.get('title', '')[:40])}\n"
             f"📦 {html.escape(order['variant'])} — {html.escape(order.get('price', '—'))}"
             f" · 💳 {html.escape(order.get('prepay', '—'))}\n"
-            f"📞 {html.escape(order['phone'])}\n"
+            + (f"📏 Razmer: {html.escape(order['size'])}\n" if order.get("size") else "")
+            + f"📞 {html.escape(order['phone'])}\n"
         )
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
@@ -1531,6 +1798,8 @@ def abandon_stage(data: dict) -> str:
     if data.get("order_no"):
         return "to'lov cheki yuborilmadi"
     if data.get("order_variant"):
+        if needs_size(data.get("order_product", {})) and not data.get("order_size"):
+            return "razmer kiritilmadi"
         return "telefon raqami qoldirilmadi"
     return "variant tanlanmadi"
 
@@ -1588,17 +1857,21 @@ async def order_timeout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 
 async def unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Hech bir oqimga tushmagan xabar — javobsiz qoldirmaymiz."""
+    """Hech bir oqimga tushmagan xabar — mijozniki bo'lsa operatorga uzatamiz."""
     if is_allowed(update):
         await update.message.reply_text(
             "Tovar joylash uchun Poizon (Dewu) linkini yuboring.\n"
             "Buyurtmalarni ko'rish: /buyurtmalar"
         )
         return
+
+    # Mijoz shunchaki yozgan — bu savol yoki izoh. Operator bot ichida
+    # o'qib, shu yerning o'zidan javob bera oladi.
+    await relay_to_admins(update, context)
     await update.message.reply_text(
-        f"Buyurtma berish uchun {CHANNEL} kanalimizdan tovarni tanlang va "
-        "post ostidagi «🛒 Buyurtma berish» havolasini bosing.\n\n"
-        "Yoki tovar raqamini yozing (masalan: 101)"
+        "✅ Xabaringiz operatorga yuborildi — tez orada javob beradi.\n\n"
+        f"Buyurtma berish uchun {CHANNEL} kanalimizdan tovarni tanlang yoki "
+        "tovar raqamini yozing (masalan: 101)"
     )
 
 
@@ -1654,9 +1927,11 @@ def main() -> None:
             ],
             WAITING_CONFIRM: [
                 webapp_handler,
-                # buy: va ask: xaridor oqiminiki — adminning tasdiq
-                # tugmalari bilan aralashib ketmasin
-                CallbackQueryHandler(handle_confirm, pattern=r"^(?!buy:|ask:)"),
+                # buy:/ask:/size: xaridor oqimiga, rep: esa javob berishga
+                # tegishli — adminning tasdiq tugmalari bilan aralashmasin
+                CallbackQueryHandler(
+                    handle_confirm, pattern=r"^(?!buy:|ask:|size:|rep:)"
+                ),
             ],
             WAITING_EDIT: [
                 webapp_handler,
@@ -1682,6 +1957,11 @@ def main() -> None:
                     filters.CONTACT | (filters.TEXT & ~filters.COMMAND),
                     handle_order_contact,
                 ),
+            ],
+            ORDER_SIZE: [
+                CallbackQueryHandler(send_size_guide, pattern=r"^size:guide$"),
+                CallbackQueryHandler(ask_question_start, pattern=r"^ask:"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_order_size),
             ],
             ORDER_QUESTION: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_question),
@@ -1717,18 +1997,38 @@ def main() -> None:
         conversation_timeout=ORDER_TIMEOUT_MINUTES * 60,
     )
 
+    # Admin mijozga bot nomidan javob yozadi — xabarlar bot ichida qoladi
+    reply_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_reply_start, pattern=r"^rep:\d+$")],
+        states={
+            ADMIN_REPLY: [
+                MessageHandler(
+                    (filters.TEXT | filters.PHOTO) & ~filters.COMMAND,
+                    handle_admin_reply,
+                ),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=ORDER_TIMEOUT_MINUTES * 60,
+    )
+
     app.add_handler(CommandHandler("buyurtmalar", orders_command))
     app.add_handler(CommandHandler("tovarlar", products_command))
     app.add_handler(CommandHandler("ochirish", delete_product_command))
     app.add_handler(CallbackQueryHandler(handle_status_change, pattern=r"^st:"))
     app.add_handler(CallbackQueryHandler(handle_delete_confirm, pattern=r"^del:"))
     app.add_handler(edit_conv)
+    # reply_conv birinchi: admin javob yozayotganda uning matni tovar
+    # narxi yoki raqami deb qabul qilinib ketmasin
+    app.add_handler(reply_conv)
     # Tartib muhim: admin suhbati birinchi tekshirilsin, aks holda u narx
     # kiritayotganda yozgan "770" tovar raqami deb qabul qilinadi
     app.add_handler(conv)
     app.add_handler(order_conv)
     # Eng oxirida: yuqoridagilarga tushmagan xabarlarga javob beramiz
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_message))
+    app.add_handler(
+        MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, unknown_message)
+    )
 
     app.post_init = remember_bot_username
     log.info("Bot ishga tushmoqda...")

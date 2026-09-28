@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS orders (
     no          INTEGER PRIMARY KEY,
     product_id  TEXT,
     variant     TEXT DEFAULT '',
+    size        TEXT DEFAULT '',
     price       TEXT DEFAULT '',
     prepay      TEXT DEFAULT '',
     status      TEXT DEFAULT '',
@@ -108,6 +109,9 @@ CREATE TABLE IF NOT EXISTS counters (
 
 def init(dsn: str) -> None:
     _exec(dsn, SCHEMA)
+    # CREATE TABLE IF NOT EXISTS eski jadvalga yangi ustun qo'shmaydi —
+    # shuning uchun keyin qo'shilgan maydonlar alohida yoziladi
+    _exec(dsn, "ALTER TABLE orders ADD COLUMN IF NOT EXISTS size TEXT DEFAULT ''")
     _exec(
         dsn,
         "INSERT INTO counters (name, value) VALUES ('product', %s) "
@@ -196,17 +200,17 @@ def product_count(dsn: str) -> int:
 
 # ---------- buyurtmalar ----------
 
-def add_order(dsn: str, product_id, variant, user, phone, price, prepay) -> int:
+def add_order(dsn: str, product_id, variant, user, phone, price, prepay, size="") -> int:
     # Raqam bitta so'rov ichida hisoblanadi — alohida SELECT kerak emas
     row = _exec(
         dsn,
         """INSERT INTO orders
-             (no, product_id, variant, price, prepay, status, receipt,
+             (no, product_id, variant, size, price, prepay, status, receipt,
               user_id, username, name, phone, created)
            VALUES ((SELECT COALESCE(MAX(no), 0) + 1 FROM orders),
-                   %s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s)
+                   %s,%s,%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s)
            RETURNING no""",
-        (product_id, variant, price, prepay, "to'lov kutilmoqda",
+        (product_id, variant, size, price, prepay, "to'lov kutilmoqda",
          user.get("id"), user.get("username"), user.get("name"), phone, _now()),
         fetch="one",
     )
