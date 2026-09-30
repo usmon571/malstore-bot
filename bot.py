@@ -142,15 +142,35 @@ def is_liquid_product(product) -> bool:
     return any(hint.lower() in text for hint in LIQUID_HINTS)
 
 
-# Sarlavhada shu so'zlardan biri bo'lsa — oyoq kiyim, o'lchash qo'llanmasi
-# yuboriladi. Topilmasa ham razmer so'raladi (kiyim bo'lishi mumkin).
+# DIQQAT: bu ro'yxatlar tovar saqlangandan keyin ham ishlatiladi, o'shanda
+# esa faqat TARJIMA QILINGAN sarlavha bo'ladi (title_zh saqlanmaydi).
+# Shuning uchun xitoycha belgilar emas, o'zbekcha/ruscha/inglizcha so'zlar
+# kerak. Qisqa bo'laklar boshqa so'z ichiga tushib qolmasin.
 SHOE_HINTS = (
-    "鞋", "运动鞋", "板鞋", "跑鞋", "靴", "拖鞋", "凉鞋",
-    "krossovka", "krosovka", "botinka", "tufli", "oyoq kiyim",
-    "sneaker", "shoe", "boot", "sandal", "slipper", "loafer", "trainer",
+    "poyabzal", "oyoq kiyim", "krossovka", "krosovka", "krasovka",
+    "botinka", "tufli", "shippak", "sandal", "katorka",
+    "кроссовк", "кросовк", "обувь", "ботинк", "туфл", "сандал", "тапочк",
+    "sneaker", "shoe", "boot", "slipper", "loafer", "trainer", "runner",
     "air force", "air max", "air jordan", "jordan", "yeezy", "dunk",
     "samba", "gazelle", "campus", "superstar", "ultraboost", "new balance",
 )
+
+# Kiyim va aksessuarlar — bularda oyoq o'lchash qo'llanmasi o'rinsiz
+APPAREL_HINTS = (
+    "kiyim", "ko'ylak", "koylak", "futbolka", "shim", "kurtka", "palto",
+    "sviter", "kofta", "jemper", "sharf", "kepka", "qalpoq", "sumka",
+    "ryukzak", "soat", "ko'zoynak", "kozoynak", "kamar", "paypoq",
+    "футболк", "рубашк", "брюки", "куртк", "толстовк", "худи", "свитер",
+    "сумк", "рюкзак", "часы", "очки", "ремен", "носк", "шарф",
+    "hoodie", "t-shirt", "tshirt", "shirt", "jacket", "coat", "sweater",
+    "sweatshirt", "pants", "trousers", "shorts", "bag", "backpack",
+    "watch", "belt", "socks", "glasses",
+)
+
+
+def _title_has(product: dict, hints: tuple) -> bool:
+    title = str(product.get("title", "")).lower()
+    return any(hint in title for hint in hints)
 # Atir narxlari "50 ml" ko'rinishida bo'ladi — bunda razmer so'ralmaydi
 ML_LABEL_RE = re.compile(r"\d\s*ml\b", re.I)
 
@@ -165,8 +185,21 @@ def needs_size(product: dict) -> bool:
 
 
 def is_footwear(product: dict) -> bool:
-    title = product.get("title", "").lower()
-    return any(hint.lower() in title for hint in SHOE_HINTS)
+    return _title_has(product, SHOE_HINTS)
+
+
+def is_apparel(product: dict) -> bool:
+    return _title_has(product, APPAREL_HINTS)
+
+
+def wants_foot_guide(product: dict) -> bool:
+    """Oyoq o'lchash qo'llanmasi yuborilsinmi.
+
+    Kiyim/aksessuar ekani aniq bilinmasa ham yuboramiz: do'kon asosan
+    poyabzal sotadi, tarjima qilingan sarlavhada esa tovar turi har doim
+    ham ko'rinib turmaydi (masalan «Skechers GO WALK ...» uzun tavsifi).
+    """
+    return is_footwear(product) or not is_apparel(product)
 
 
 SIZE_GUIDE = (
@@ -776,7 +809,7 @@ async def handle_order_variant(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def ask_for_size(message, product: dict) -> int:
     """Razmerni so'raydi; oyoq kiyim bo'lsa o'lchash qo'llanmasi bilan."""
-    if is_footwear(product):
+    if wants_foot_guide(product):
         await message.reply_text(SIZE_GUIDE, parse_mode="HTML")
         await message.reply_text(
             "📏 <b>Razmeringizni kiriting.</b>\n"
