@@ -6,65 +6,132 @@
 <title>MalStore</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
+  /* MalStore logosi: to'q ko'k (navy) + yashil */
   :root{
-    --bg: var(--tg-theme-bg-color, #ffffff);
-    --text: var(--tg-theme-text-color, #0f0f0f);
-    --hint: var(--tg-theme-hint-color, #8a8a8e);
-    --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
-    --accent: var(--tg-theme-button-color, #2ea6ff);
-    --accent-text: var(--tg-theme-button-text-color, #ffffff);
-    --line: color-mix(in srgb, var(--hint) 25%, transparent);
+    --navy:#12244F;
+    --navy-deep:#0D1B3D;
+    --green:#35B96C;
+    --green-dark:#2A9D58;
+
+    --bg:#F3F6FB;
+    --card:#FFFFFF;
+    --text:var(--navy);
+    --hint:#6B7C99;
+    --line:#DCE4EF;
+    --input-bg:#FFFFFF;
+    --accent:var(--green);
+    --accent-text:#FFFFFF;
+    --shadow:0 1px 2px rgba(18,36,79,.06), 0 4px 14px rgba(18,36,79,.05);
+  }
+  [data-theme="dark"]{
+    --bg:var(--navy-deep);
+    --card:#152B57;
+    --text:#EAF1FA;
+    --hint:#93A6C4;
+    --line:#26416F;
+    --input-bg:#0F2149;
+    --accent:#3FCB78;
+    --accent-text:var(--navy-deep);
+    --shadow:none;
   }
   *{box-sizing:border-box}
   body{
     margin:0; padding:12px 12px 90px;
     background:var(--bg); color:var(--text);
     font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
   }
-  .card{background:var(--card); border-radius:14px; padding:14px; margin-bottom:12px}
-  .label{font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--hint); margin-bottom:8px}
+  .brand{display:flex; align-items:center; gap:10px; padding:2px 2px 14px}
+  .brand svg{width:34px; height:34px; flex:0 0 auto}
+  .brandname{
+    font-size:17px; font-weight:800; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--text);
+  }
+  .brandname span{color:var(--green)}
+  .card{
+    background:var(--card); border-radius:16px; padding:14px; margin-bottom:12px;
+    box-shadow:var(--shadow);
+  }
+  .label{
+    font-size:11.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--hint); margin-bottom:9px;
+  }
   textarea,input{
-    width:100%; border:1px solid var(--line); border-radius:10px; padding:10px 12px;
-    background:var(--bg); color:var(--text); font:inherit; outline:none;
+    width:100%; border:1.5px solid var(--line); border-radius:11px; padding:10px 12px;
+    background:var(--input-bg); color:var(--text); font:inherit; outline:none;
+    transition:border-color .15s, box-shadow .15s;
   }
   textarea{resize:vertical; min-height:70px}
-  input:focus,textarea:focus{border-color:var(--accent)}
+  input:focus,textarea:focus{
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
   .row{
     display:grid; grid-template-columns:1fr 1fr; gap:8px 10px;
     padding:11px 0; border-bottom:1px solid var(--line);
   }
   .row:last-child{border-bottom:none}
-  .size{grid-column:1/-1; font-weight:700}
+  .size{
+    grid-column:1/-1; font-weight:800; font-size:14px;
+    letter-spacing:.02em; color:var(--text);
+  }
   .field{display:flex; flex-direction:column; gap:3px; min-width:0}
   .cap{font-size:11px; color:var(--hint)}
-  .out{grid-column:1/-1; text-align:right; font-size:13px; font-weight:700; color:var(--accent)}
+  .out{
+    grid-column:1/-1; text-align:right; font-size:14px; font-weight:800;
+    color:var(--accent);
+  }
   .muted{font-size:12.5px; color:var(--hint)}
   .chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
   .chip{
-    border:1px solid var(--line); border-radius:999px; padding:6px 13px;
-    font-size:13px; font-weight:600; background:var(--bg); color:var(--text); cursor:pointer;
-    text-transform:none; letter-spacing:normal;
+    border:1.5px solid var(--line); border-radius:999px; padding:6px 13px;
+    font-size:13px; font-weight:700; background:transparent; color:var(--text);
+    cursor:pointer; text-transform:none; letter-spacing:normal;
+    transition:background .15s, border-color .15s, color .15s;
   }
   .chip.on{background:var(--accent); color:var(--accent-text); border-color:var(--accent)}
-  .total{display:flex; justify-content:space-between; align-items:baseline; padding:7px 0}
-  .total b{font-size:17px}
-  .preview{white-space:pre-wrap; font-size:13.5px; line-height:1.5}
-  .warn{color:#e0533d; font-size:12.5px; margin-top:8px; display:none}
-  .sendbtn{
-    width:100%; border:none; border-radius:12px; padding:15px;
-    background:var(--accent); color:var(--accent-text);
-    font:600 16px/1 inherit; cursor:pointer;
+  .total{
+    display:flex; justify-content:space-between; align-items:baseline;
+    gap:12px; padding:9px 0; border-bottom:1px solid var(--line);
   }
-  .sendbtn:disabled{opacity:.45}
+  .total:last-child{border-bottom:none}
+  .total > span{flex:1; min-width:0}
+  .total b{font-size:17px; color:var(--accent); white-space:nowrap}
+  .preview{white-space:pre-wrap; font-size:13.5px; line-height:1.5}
+  .warn{color:#E05252; font-size:12.5px; margin-top:8px; display:none}
+  .sendbtn{
+    width:100%; border:none; border-radius:13px; padding:16px;
+    background:var(--accent); color:var(--accent-text);
+    font:800 16px/1 inherit; letter-spacing:.02em; cursor:pointer;
+    box-shadow:0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .sendbtn:disabled{opacity:.4; box-shadow:none}
   .openbtn{
-    width:100%; border:1px solid var(--accent); border-radius:10px; padding:11px;
+    width:100%; border:1.5px solid var(--accent); border-radius:11px; padding:11px;
     background:transparent; color:var(--accent);
-    font:600 14.5px/1 inherit; cursor:pointer; margin-bottom:12px;
+    font:700 14.5px/1 inherit; cursor:pointer; margin-bottom:12px;
   }
   h2{margin:0 0 4px; font-size:17px}
 </style>
 </head>
 <body>
+
+<div class="brand">
+  <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <!-- sumka dastasi -->
+    <path d="M20 20V14a12 12 0 0 1 24 0v6" fill="none"
+          stroke="#35B96C" stroke-width="5.5" stroke-linecap="round"/>
+    <!-- sumka tanasi -->
+    <rect x="8" y="19" width="48" height="38" rx="10" fill="#35B96C"/>
+    <!-- dasta tutashgan nuqtalar -->
+    <circle cx="20" cy="27" r="2.6" fill="#12244F"/>
+    <circle cx="44" cy="27" r="2.6" fill="#12244F"/>
+    <!-- M harfi -->
+    <path d="M20 47V33l12 10 12-10v14" fill="none"
+          stroke="#12244F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <div class="brandname">MAL <span>STORE</span></div>
+</div>
 
 <div class="card">
   <div class="label">Mahsulot nomi</div>
@@ -128,6 +195,22 @@
 <script>
 const tg = window.Telegram?.WebApp;
 tg?.ready(); tg?.expand();
+
+// Mavzu: Telegram qora rejimda bo'lsa — logoning to'q ko'k foni,
+// aks holda och fon. Telegram'ning o'z ranglari ishlatilmaydi, chunki
+// ilova MalStore logosi palitrasida turishi kerak.
+function applyTheme(){
+  const dark = tg?.colorScheme
+    ? tg.colorScheme === "dark"
+    : window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  try{
+    tg?.setHeaderColor?.("#12244F");
+    tg?.setBackgroundColor?.(dark ? "#0D1B3D" : "#F3F6FB");
+  }catch(e){}
+}
+applyTheme();
+tg?.onEvent?.("themeChanged", applyTheme);
 
 function b64decode(s){
   // URL-xavfsiz base64 → matn (UTF-8)
