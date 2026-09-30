@@ -259,7 +259,8 @@ function buildPreview(finals){
       keys.forEach(k => L.push(`🧴 ${k} — ${finals[k]}`));
     }
   }
-  if(D.arrival) L.push(`🚚 Yetkazib berish: ${D.arrival}`);
+  // Yetkazib berish sanasi ataylab yozilmaydi — reys jadvali o'zgarib
+  // turadi, mijozga aniq kun aytib qo'yish noto'g'ri bo'ladi.
   L.push("");
   L.push(D.channel || "");
   return L.join("\n");

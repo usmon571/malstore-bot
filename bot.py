@@ -574,9 +574,9 @@ DIVIDER = "➖➖➖➖➖➖➖➖➖➖"
 TG_CAPTION_LIMIT = 1024
 
 
-def build_caption(
-    title: str, specs: dict[str, str], prices: dict[str, str], arrival: str = ""
-) -> str:
+def build_caption(title: str, specs: dict[str, str], prices: dict[str, str]) -> str:
+    """Post matni. Yetkazib berish sanasi ataylab yozilmaydi — reys jadvali
+    o'zgarib turadi, mijozga aniq kun aytib qo'yish esa noto'g'ri bo'ladi."""
     def blocks(spec_items: list[tuple[str, str]]) -> str:
         lines = []
         if title:
@@ -601,8 +601,6 @@ def build_caption(
             lines.append("💰 <b>Narxlari:</b>")
             for label, value in prices.items():
                 lines.append(f"🧴 <b>{html.escape(label)}</b> — {html.escape(value)}")
-        if arrival:
-            lines.append(f"🚚 <b>Yetkazib berish:</b> {html.escape(arrival)}")
         lines.append("")
         lines.append(html.escape(CHANNEL))
         return "\n".join(lines)
@@ -691,8 +689,6 @@ async def show_product_for_order(
     context.user_data["order_product"] = product
 
     lines = [f"🛍 <b>{html.escape(product['title'])}</b>", ""]
-    if product.get("arrival"):
-        lines.append(f"🚚 Yetkazib berish: {html.escape(product['arrival'])}")
     lines.append(f"🆔 Tovar raqami: <b>{product['id']}</b>")
     lines.append("")
     lines.append("Qaysi variantni olasiz?")
@@ -1430,7 +1426,6 @@ async def send_preview(
             product.get("title", ""),
             product.get("specs", {}),
             prices,
-            context.user_data.get("arrival", ""),
         ),
         context.user_data["product_id"],
     )
@@ -1501,7 +1496,6 @@ def current_caption(context: ContextTypes.DEFAULT_TYPE) -> str:
             product.get("title", ""),
             product.get("specs", {}),
             context.user_data.get("prices", {}),
-            context.user_data.get("arrival", ""),
         )
     return with_order_footer(body, product_id) if product_id else body
 
