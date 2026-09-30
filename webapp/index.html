@@ -215,7 +215,9 @@ function applyMarkup(base, text){
 
 function calc(){
   const markupText = markupEl.value;
-  const finals = {}, lines = [];
+  // finals — mijoz to'laydigan narx; bases — tannarx (yetkazib berish va
+  // ustamasiz). Oldindan to'lov botda aynan tannarxda so'raladi.
+  const finals = {}, bases = {}, lines = [];
   let missing = false;
 
   VARIANTS.forEach((v, i)=>{
@@ -236,6 +238,7 @@ function calc(){
 
     out.textContent = fmtUzs(fin);
     finals[v.label] = fmtUzs(fin);
+    bases[v.label] = fmtUzs(base);
     lines.push({label: v.label, weightKg: kg, cny, base, deliv, fin});
   });
 
@@ -268,7 +271,7 @@ function calc(){
       else tg.MainButton.hide();
     }catch(e){}
   }
-  return finals;
+  return {finals, bases};
 }
 
 function buildPreview(finals){
@@ -362,7 +365,7 @@ function submit(){
   const errEl = document.getElementById("sendErr");
   errEl.style.display = "none";
 
-  const finals = calc();
+  const {finals, bases} = calc();
   if(!Object.keys(finals).length){
     errEl.textContent = "Avval barcha hajmlar uchun narx kiriting";
     errEl.style.display = "block";
@@ -371,6 +374,7 @@ function submit(){
   const payload = JSON.stringify({
     title: titleEl.value.trim(),
     prices: finals,
+    base: bases,          // tannarx — bot oldindan to'lovni shundan so'raydi
     markup: markupEl.value.trim(),
     caption: previewEl.value,
   });

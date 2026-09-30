@@ -66,7 +66,7 @@ ORDER_DEFAULTS = {
     "price": "", "prepay": "", "size": "",
     "status": "to'lov kutilmoqda", "receipt": None,
 }
-PRODUCT_DEFAULTS = {"caption": "", "message_ids": []}
+PRODUCT_DEFAULTS = {"caption": "", "message_ids": [], "base_prices": {}}
 
 
 def _migrate(data: dict) -> dict:
@@ -97,9 +97,14 @@ def next_product_id() -> str:
 def save_product(
     product_id: str, url: str, title: str, prices: dict, arrival: str,
     caption: str = "", message_ids: list[int] | None = None,
+    base_prices: dict | None = None,
 ) -> None:
+    """base_prices — yetkazib berish va ustamasiz tannarx (oldindan to'lov shundan)."""
     if USE_DB:
-        db.save_product(DSN, product_id, url, title, prices, arrival, caption, message_ids)
+        db.save_product(
+            DSN, product_id, url, title, prices, arrival, caption,
+            message_ids, base_prices,
+        )
         return
     data = _load()
     data["products"][product_id] = {
@@ -107,6 +112,7 @@ def save_product(
         "url": url,
         "title": title,
         "prices": prices,
+        "base_prices": base_prices or {},
         "arrival": arrival,
         "caption": caption,
         "message_ids": message_ids or [],

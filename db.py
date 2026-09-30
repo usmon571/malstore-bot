@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS products (
     url         TEXT DEFAULT '',
     title       TEXT DEFAULT '',
     prices      JSONB DEFAULT '{}'::jsonb,
+    base_prices JSONB DEFAULT '{}'::jsonb,
     arrival     TEXT DEFAULT '',
     caption     TEXT DEFAULT '',
     message_ids JSONB DEFAULT '[]'::jsonb,
@@ -114,6 +115,11 @@ def init(dsn: str) -> None:
     _exec(dsn, "ALTER TABLE orders ADD COLUMN IF NOT EXISTS size TEXT DEFAULT ''")
     _exec(
         dsn,
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS "
+        "base_prices JSONB DEFAULT '{}'::jsonb",
+    )
+    _exec(
+        dsn,
         "INSERT INTO counters (name, value) VALUES ('product', %s) "
         "ON CONFLICT (name) DO NOTHING",
         (FIRST_ID,),
@@ -140,17 +146,23 @@ def next_product_id(dsn: str) -> str:
     return str(row["value"])
 
 
-def save_product(dsn: str, product_id, url, title, prices, arrival, caption, message_ids) -> None:
+def save_product(
+    dsn: str, product_id, url, title, prices, arrival, caption, message_ids,
+    base_prices=None,
+) -> None:
     _exec(
         dsn,
         """INSERT INTO products
-             (id, url, title, prices, arrival, caption, message_ids, created)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+             (id, url, title, prices, base_prices, arrival, caption,
+              message_ids, created)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
            ON CONFLICT (id) DO UPDATE SET
              url=EXCLUDED.url, title=EXCLUDED.title, prices=EXCLUDED.prices,
+             base_prices=EXCLUDED.base_prices,
              arrival=EXCLUDED.arrival, caption=EXCLUDED.caption,
              message_ids=EXCLUDED.message_ids""",
-        (product_id, url, title, json.dumps(prices, ensure_ascii=False), arrival,
+        (product_id, url, title, json.dumps(prices, ensure_ascii=False),
+         json.dumps(base_prices or {}, ensure_ascii=False), arrival,
          caption, json.dumps(message_ids or [], ensure_ascii=False), _now()),
     )
 
@@ -162,7 +174,9 @@ def get_product(dsn: str, product_id: str) -> dict | None:
 
 
 def update_product(dsn: str, product_id: str, **fields) -> dict | None:
-    allowed = {"url", "title", "prices", "arrival", "caption", "message_ids"}
+    allowed = {
+        "url", "title", "prices", "base_prices", "arrival", "caption", "message_ids",
+    }
     sets, values = [], []
     for key, value in fields.items():
         if key not in allowed:
@@ -170,7 +184,7 @@ def update_product(dsn: str, product_id: str, **fields) -> dict | None:
         sets.append(f"{key} = %s")
         values.append(
             json.dumps(value, ensure_ascii=False)
-            if key in ("prices", "message_ids") else value
+            if key in ("prices", "base_prices", "message_ids") else value
         )
     if not sets:
         return get_product(dsn, product_id)

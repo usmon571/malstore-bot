@@ -931,8 +931,13 @@ async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYP
 
     user = update.effective_user
     price_text = product.get("prices", {}).get(variant, "")
-    price_value = parse_amount(price_text) or 0.0
-    prepay_text = format_uzs(price_value * PREPAY_SHARE) if price_value else "—"
+    # Oldindan to'lov — mahsulotning tannarxi (yetkazib berish va ustamasiz).
+    # Eski tovarlarda tannarx saqlanmagan, ularda avvalgidek ulush olinadi.
+    prepay_text = (product.get("base_prices") or {}).get(variant, "")
+    by_cost = bool(prepay_text)
+    if not by_cost:
+        price_value = parse_amount(price_text) or 0.0
+        prepay_text = format_uzs(price_value * PREPAY_SHARE) if price_value else "—"
 
     order_no = store.add_order(
         product_id=product["id"],
@@ -955,12 +960,19 @@ async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     if size:
         lines.append(f"📏 Razmer: <b>{html.escape(size)}</b>")
-    lines += [
-        "",
-        f"💳 <b>Oldindan to'lov ({PREPAY_SHARE:.0%}): {html.escape(prepay_text)}</b>",
-        f"   Qolgani tovar kelganda to'lanadi.",
-        "",
-    ]
+    lines.append("")
+    if by_cost:
+        lines += [
+            f"💳 <b>Oldindan to'lov: {html.escape(prepay_text)}</b>",
+            "   Bu — mahsulotning o'z narxi.",
+            "   Yetkazib berish va xizmat haqi tovar kelganda to'lanadi.",
+        ]
+    else:
+        lines += [
+            f"💳 <b>Oldindan to'lov ({PREPAY_SHARE:.0%}): {html.escape(prepay_text)}</b>",
+            "   Qolgani tovar kelganda to'lanadi.",
+        ]
+    lines.append("")
     if CARD_NUMBER:
         lines.append("Quyidagi kartaga o'tkazing:")
         lines.append(f"💳 <code>{html.escape(CARD_NUMBER)}</code>")
@@ -1308,6 +1320,8 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Ilovada tayyorlangan (va kerak bo'lsa tahrirlangan) post matni
     if data.get("caption"):
         context.user_data["custom_caption"] = data["caption"]
+    # Tannarx (yetkazib berish va ustamasiz) — oldindan to'lov uchun
+    context.user_data["base_prices"] = data.get("base", {})
 
     await update.message.reply_text(
         f"✅ Ilovadan qabul qilindi (ustama: {data.get('markup', '—')})",
@@ -1524,6 +1538,8 @@ async def handle_markup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     # Ustama har bir hajmning jami xarajatiga (tannarx + yetkazib berish) qo'llanadi
     finals: dict[str, str] = {}
+    # Tannarx — oldindan to'lov shu summada so'raladi
+    bases: dict[str, str] = {}
     report = []
     for label, cost in costs.items():
         total = cost["base"] + (cost["delivery"] or 0.0)
@@ -1534,11 +1550,13 @@ async def handle_markup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             )
             return WAITING_MARKUP
         finals[label] = format_uzs(final)
+        bases[label] = format_uzs(cost["base"])
         report.append(
             f"🧴 {label}: {format_uzs(cost['base'])} + "
             f"{format_uzs(cost['delivery'] or 0)} → 💰 {format_uzs(final)}"
         )
 
+    context.user_data["base_prices"] = bases
     await update.message.reply_text(
         f"➕ Ustama: {update.message.text.strip()}\n\n" + "\n".join(report)
     )
@@ -1612,6 +1630,7 @@ async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 url=context.user_data.get("source_url", ""),
                 title=product.get("title", ""),
                 prices=context.user_data.get("prices", {}),
+                base_prices=context.user_data.get("base_prices", {}),
                 arrival=context.user_data.get("arrival", ""),
                 caption=caption,
                 message_ids=[m.message_id for m in sent if m],

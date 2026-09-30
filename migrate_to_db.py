@@ -40,6 +40,7 @@ for pid, p in products.items():
     db.save_product(
         DSN, pid, p.get("url", ""), p.get("title", ""), p.get("prices", {}),
         p.get("arrival", ""), p.get("caption", ""), p.get("message_ids", []),
+        p.get("base_prices", {}),
     )
     added_p += 1
 
