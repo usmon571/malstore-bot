@@ -76,7 +76,8 @@ TG_ALBUM_LIMIT = 10  # Telegram sendMediaGroup bir xabarda ko'pi bilan 10 ta qab
     ORDER_QUESTION,
     ADMIN_REPLY,
     PRODUCT_EDIT,
-) = range(11)
+    PRODUCT_COST,
+) = range(12)
 
 # Xaridor buyurtmani tashlab ketsa, shuncha daqiqadan keyin holat tozalanadi
 ORDER_TIMEOUT_MINUTES = settings.ORDER_TIMEOUT_MINUTES
@@ -716,6 +717,12 @@ async def notify_order_started(
     lines = ["🛒 <b>Mijoz zakaz qilyapti</b>", ""]
     lines += product_summary(context)
     lines.append(f"👤 {customer_line(user)}")
+    if not product.get("base_prices"):
+        lines.append("")
+        lines.append(
+            f"⚠️ Tannarx saqlanmagan — oldindan to'lov {PREPAY_SHARE:.0%} olinadi "
+            f"va tannarxni qoplamasligi mumkin. Tuzatish: /tannarx {product.get('id', '')}"
+        )
 
     try:
         await notify_admins(context, "\n".join(lines), reply_button(user))
@@ -950,6 +957,7 @@ async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     context.user_data["order_no"] = order_no
     context.user_data["prepay"] = prepay_text
+    context.user_data["prepay_by_cost"] = by_cost
     context.user_data["phone"] = phone
 
     lines = [
@@ -1018,9 +1026,11 @@ async def handle_order_receipt(update: Update, context: ContextTypes.DEFAULT_TYP
         f"📦 {html.escape(variant)} — {html.escape(order.get('price', '—') if order else '—')}\n"
         + (f"📏 Razmer: {html.escape(context.user_data['order_size'])}\n"
            if context.user_data.get("order_size") else "")
-        + f"💳 Oldindan to'lov: {html.escape(context.user_data.get('prepay', '—'))}\n"
-        f"📞 {html.escape(order.get('phone', '—') if order else '—')}\n"
-        f"👤 {html.escape(user.full_name)}"
+        + f"💳 Oldindan to'lov: {html.escape(context.user_data.get('prepay', '—'))}"
+        + ("\n" if context.user_data.get("prepay_by_cost", True) else
+           f" ⚠️ ({PREPAY_SHARE:.0%} — tannarx saqlanmagan)\n")
+        + f"📞 {html.escape(order.get('phone', '—') if order else '—')}\n"
+        + f"👤 {html.escape(user.full_name)}"
         + (f" (@{user.username})" if user.username else "")
         + f"\n🔗 {product.get('url', '')}"
     )
@@ -1665,14 +1675,27 @@ async def products_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     lines = [f"🛍 Oxirgi {len(products)} ta tovar:\n"]
+    missing_cost = 0
     for product in products:
+        # Tannarxi yo'q tovarda oldindan to'lov ulush bilan olinadi va
+        # Poizon'ga to'lanadigan pulni qoplamaydi — ko'rinib tursin
+        mark = "" if product.get("base_prices") else " ⚠️"
+        if mark:
+            missing_cost += 1
         lines.append(
-            f"🆔 <b>{product['id']}</b> · {product['created'][5:10]}\n"
+            f"🆔 <b>{product['id']}</b>{mark} · {product['created'][5:10]}\n"
             f"{html.escape(product.get('title', '')[:45])}\n"
             f"{' · '.join(product.get('prices', {}).values()) or '—'}\n"
         )
+    if missing_cost:
+        lines.append(
+            f"⚠️ {missing_cost} ta tovarda tannarx yo'q — oldindan to'lov "
+            f"{PREPAY_SHARE:.0%} olinadi va tannarxni qoplamasligi mumkin.\n"
+            "Tuzatish: /tannarx 101\n"
+        )
     lines.append("O'chirish: /ochirish 101")
     lines.append("Matnni tahrirlash: /tahrirlash 101")
+    lines.append("Tannarx kiritish: /tannarx 101")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
@@ -1851,6 +1874,169 @@ async def notify_abandoned(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await notify_admins(context, "\n".join(lines), reply_button(user))
 
 
+# Botning «➕ Ustama» hisoboti:
+#   🧴 50 ml: 1 003 000 so'm + 25 000 so'm → 💰 1 131 000 so'm
+# Admin shu xabarni botga qayta yuborsa, tannarx shundan o'qiladi.
+COST_LINE_RE = re.compile(
+    r"🧴\s*(?P<label>[^:\n]+):\s*"
+    r"(?P<base>[\d\s]+?)\s*so'm\s*\+\s*"
+    r"[\d\s]+?\s*so'm\s*→\s*💰\s*"
+    r"(?P<final>[\d\s]+?)\s*so'm"
+)
+
+
+def parse_cost_report(text: str) -> tuple[dict[str, str], dict[str, str]] | None:
+    """Hisobotdan (tannarxlar, yakuniy narxlar). Topilmasa None."""
+    bases, finals = {}, {}
+    for match in COST_LINE_RE.finditer(text or ""):
+        label = match.group("label").strip()
+        bases[label] = f"{match.group('base').strip()} so'm"
+        finals[label] = f"{match.group('final').strip()} so'm"
+    return (bases, finals) if bases else None
+
+
+def find_product_by_prices(finals: dict[str, str]) -> dict | None:
+    """Yakuniy narxlari aynan mos keladigan tovarni topadi."""
+    want = {k.strip(): v.strip() for k, v in finals.items()}
+    for product in store.list_products(200):
+        have = {
+            str(k).strip(): str(v).strip()
+            for k, v in (product.get("prices") or {}).items()
+        }
+        if have == want:
+            return product
+    return None
+
+
+async def handle_cost_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin eski «➕ Ustama» hisobotini qayta yubordi — tannarxni o'qib olamiz."""
+    if not is_allowed(update):
+        await deny(update)
+        return
+
+    parsed = parse_cost_report(update.message.text)
+    if not parsed:
+        await update.message.reply_text(
+            "Bu xabardan tannarxni ajrata olmadim. «➕ Ustama: ...» bilan "
+            "boshlanadigan hisobotni yuboring."
+        )
+        return
+
+    bases, finals = parsed
+    summary = "\n".join(
+        f"🧴 <b>{html.escape(k)}</b> — {html.escape(v)}" for k, v in bases.items()
+    )
+
+    product = find_product_by_prices(finals)
+    if not product:
+        await update.message.reply_text(
+            "Tannarxni o'qidim, lekin qaysi tovarga tegishli ekanini topa olmadim "
+            "— yakuniy narxlar bazadagi hech bir tovarga mos kelmadi "
+            "(post keyin tahrirlangan bo'lishi mumkin).\n\n"
+            f"{summary}\n\n"
+            "Tovar raqamini o'zingiz ko'rsating: /tannarx 101",
+            parse_mode="HTML",
+        )
+        return
+
+    store.update_product(product["id"], base_prices=bases)
+    await update.message.reply_text(
+        f"✅ 🆔 <b>{product['id']}</b> — {html.escape(product.get('title', '')[:50])}\n"
+        "Tannarx saqlandi:\n\n"
+        f"{summary}\n\n"
+        "Endi bu tovarga oldindan to'lov shu summada so'raladi.",
+        parse_mode="HTML",
+    )
+
+
+def parse_cost_text(text: str, labels: list[str]) -> dict[str, float] | None:
+    """"570 770 970" → {"50 ml": 570.0, ...}. Soni mos kelmasa None."""
+    numbers = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", text)]
+    if len(numbers) != len(labels):
+        return None
+    return dict(zip(labels, numbers))
+
+
+async def cost_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """/tannarx 101 — eski tovarga tannarxni kiritish.
+
+    Tannarx saqlanmagan tovarlarda oldindan to'lov eski usulda (ulush bilan)
+    olinadi va u Poizon'ga to'lanadigan pulni qoplamaydi. Shu komanda orqali
+    tovarni qayta joylamasdan tuzatish mumkin.
+    """
+    if not is_allowed(update):
+        await deny(update)
+        return ConversationHandler.END
+    if not context.args:
+        await update.message.reply_text("Qaysi tovar? Masalan: /tannarx 101")
+        return ConversationHandler.END
+
+    product_id = context.args[0].lstrip("#")
+    product = store.get_product(product_id)
+    if not product:
+        await update.message.reply_text(f"🆔 {product_id} topilmadi.")
+        return ConversationHandler.END
+
+    labels = list(product.get("prices", {}).keys())
+    if not labels:
+        await update.message.reply_text(
+            f"🆔 {product_id} da narx variantlari yo'q — tannarx yozib bo'lmaydi."
+        )
+        return ConversationHandler.END
+
+    context.user_data["cost_product_id"] = product_id
+    context.user_data["cost_labels"] = labels
+
+    lines = [
+        f"🆔 <b>{product_id}</b> — {html.escape(product.get('title', '')[:60])}",
+    ]
+    if product.get("url"):
+        lines.append(f"🔗 {html.escape(product['url'])}")
+    if product.get("base_prices"):
+        lines.append("")
+        lines.append("ℹ️ Bu tovarda tannarx bor, qayta yozasiz.")
+    lines.append("")
+    lines.append("Har bir variant uchun Poizon <b>¥</b> narxini tartib bilan yozing:")
+    lines.append(html.escape(", ".join(labels)))
+    lines.append("")
+    lines.append(f"Masalan: {' '.join(['770'] * len(labels))}")
+    lines.append("Bekor qilish: /cancel")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    return PRODUCT_COST
+
+
+async def handle_product_cost(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    product_id = context.user_data.get("cost_product_id")
+    labels = context.user_data.get("cost_labels", [])
+    if not product_id or not labels:
+        await update.message.reply_text("Tovar ma'lumoti yo'qoldi. /tannarx dan boshlang.")
+        return ConversationHandler.END
+
+    parsed = parse_cost_text(update.message.text, labels)
+    if parsed is None:
+        await update.message.reply_text(
+            f"{len(labels)} ta son kerak edi ({', '.join(labels)}).\n"
+            f"Masalan: {' '.join(['770'] * len(labels))}"
+        )
+        return PRODUCT_COST
+
+    rate, rate_date = await asyncio.to_thread(fetch_cny_rate)
+    base_prices = {label: format_uzs(cny * rate) for label, cny in parsed.items()}
+    store.update_product(product_id, base_prices=base_prices)
+
+    lines = [f"✅ Tannarx saqlandi (kurs {rate_date}: 1 ¥ = {rate:,.2f} so'm)".replace(",", " ")]
+    lines.append("")
+    for label, value in base_prices.items():
+        lines.append(f"🧴 <b>{html.escape(label)}</b> — {html.escape(value)}")
+    lines.append("")
+    lines.append("Endi bu tovarga oldindan to'lov shu summada so'raladi.")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
 async def order_timeout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Buyurtma yarim yo'lda qolib ketgan — adminni ogohlantirib, tozalaymiz."""
     try:
@@ -2010,6 +2196,18 @@ def main() -> None:
         conversation_timeout=ORDER_TIMEOUT_MINUTES * 60,
     )
 
+    # Eski tovarga tannarx kiritish — /tannarx 101 dan keyin ¥ narxlar kutiladi
+    cost_conv = ConversationHandler(
+        entry_points=[CommandHandler("tannarx", cost_command)],
+        states={
+            PRODUCT_COST: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_product_cost)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=ORDER_TIMEOUT_MINUTES * 60,
+    )
+
     # Admin mijozga bot nomidan javob yozadi — xabarlar bot ichida qoladi
     reply_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_reply_start, pattern=r"^rep:\d+$")],
@@ -2031,6 +2229,13 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(handle_status_change, pattern=r"^st:"))
     app.add_handler(CallbackQueryHandler(handle_delete_confirm, pattern=r"^del:"))
     app.add_handler(edit_conv)
+    app.add_handler(cost_conv)
+    # Eski «➕ Ustama» hisoboti qayta yuborilsa — tannarxni o'zi o'qib oladi.
+    # Suhbatlardan oldin turadi, aks holda narx kutilayotgan bosqichga tushadi.
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.Regex(r"🧴[^\n]*→\s*💰"),
+        handle_cost_report,
+    ))
     # reply_conv birinchi: admin javob yozayotganda uning matni tovar
     # narxi yoki raqami deb qabul qilinib ketmasin
     app.add_handler(reply_conv)
