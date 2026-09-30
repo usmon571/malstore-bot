@@ -1895,17 +1895,127 @@ def parse_cost_report(text: str) -> tuple[dict[str, str], dict[str, str]] | None
     return (bases, finals) if bases else None
 
 
-def find_product_by_prices(finals: dict[str, str]) -> dict | None:
+def _price_key(prices: dict | None) -> tuple:
+    """Narxlar lug'atidan solishtirish uchun barqaror kalit."""
+    return tuple(sorted(
+        (str(k).strip(), str(v).strip()) for k, v in (prices or {}).items()
+    ))
+
+
+def price_index(products: list[dict] | None = None) -> dict[tuple, dict]:
+    """{narxlar kaliti: tovar} — hisobotni tovarga bog'lash uchun."""
+    products = store.list_products(200) if products is None else products
+    return {_price_key(p.get("prices")): p for p in products}
+
+
+def find_product_by_prices(
+    finals: dict[str, str], index: dict[tuple, dict] | None = None
+) -> dict | None:
     """Yakuniy narxlari aynan mos keladigan tovarni topadi."""
-    want = {k.strip(): v.strip() for k, v in finals.items()}
-    for product in store.list_products(200):
-        have = {
-            str(k).strip(): str(v).strip()
-            for k, v in (product.get("prices") or {}).items()
-        }
-        if have == want:
-            return product
-    return None
+    index = price_index() if index is None else index
+    return index.get(_price_key(finals))
+
+
+def export_text(message: dict) -> str:
+    """Telegram eksportidagi xabar matni.
+
+    "text" ba'zan oddiy satr, ba'zan qismlar ro'yxati bo'ladi (qalin yozuv,
+    havola va hokazo alohida bo'lak sifatida keladi) — hammasini birlashtiramiz.
+    """
+    text = message.get("text", "")
+    if isinstance(text, str):
+        return text
+    if isinstance(text, list):
+        parts = []
+        for item in text:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(str(item.get("text", "")))
+        return "".join(parts)
+    return ""
+
+
+EXPORT_HELP = (
+    "Telegram Desktop'da shu chatni oching → yuqoridagi ⋮ → "
+    "«Export chat history» → Format: <b>JSON</b>, «Photos» va boshqa "
+    "media belgisini olib tashlang → Export.\n"
+    "Chiqqan <code>result.json</code> faylini shu yerga yuboring."
+)
+
+
+async def handle_chat_export(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Telegram chat eksporti — hamma eski hisobotdan tannarx yig'ib olinadi."""
+    if not is_allowed(update):
+        await deny(update)
+        return
+
+    document = update.message.document
+    if document.file_size and document.file_size > 19 * 1024 * 1024:
+        await update.message.reply_text(
+            "❌ Fayl juda katta (bot 20 MB gacha ola oladi).\n"
+            "Eksportda mediani o'chirib, faqat matnni chiqaring."
+        )
+        return
+
+    msg = await update.message.reply_text("⏳ Fayl o'qilmoqda...")
+    try:
+        file = await context.bot.get_file(document.file_id)
+        raw = bytes(await file.download_as_bytearray())
+        data = json.loads(raw.decode("utf-8"))
+    except Exception as e:
+        log.warning("eksport o'qilmadi: %s", e)
+        await msg.edit_text(f"❌ Faylni o'qib bo'lmadi: {e}")
+        return
+
+    messages = data.get("messages") if isinstance(data, dict) else None
+    if not messages:
+        await msg.edit_text(
+            "Bu faylda xabarlar topilmadi.\n\n" + EXPORT_HELP, parse_mode="HTML"
+        )
+        return
+
+    index = price_index()
+    found: dict[str, dict] = {}   # keyingi hisobot oldingisini almashtiradi
+    unmatched = 0
+    for message in messages:
+        parsed = parse_cost_report(export_text(message))
+        if not parsed:
+            continue
+        bases, finals = parsed
+        product = find_product_by_prices(finals, index)
+        if not product:
+            unmatched += 1
+            continue
+        found[str(product["id"])] = bases
+
+    for product_id, bases in found.items():
+        store.update_product(product_id, base_prices=bases)
+
+    lines = [f"📄 {len(messages)} ta xabar ko'rildi.", ""]
+    if found:
+        lines.append(f"✅ <b>{len(found)} ta tovarga tannarx yozildi:</b>")
+        lines.append(html.escape(", ".join(sorted(found, key=str))))
+    else:
+        lines.append("Tannarx hisoboti topilmadi.")
+    if unmatched:
+        lines.append("")
+        lines.append(
+            f"⚠️ {unmatched} ta hisobot hech bir tovarga mos kelmadi "
+            "(tovar o'chirilgan yoki narxi keyin tahrirlangan)."
+        )
+
+    # Hali ham tannarxsiz qolganlar — ularni qo'lda kiritish kerak
+    left = [
+        str(p["id"]) for p in store.list_products(200) if not p.get("base_prices")
+    ]
+    if left:
+        lines.append("")
+        lines.append(f"ℹ️ {len(left)} ta tovarda tannarx hali yo'q:")
+        lines.append(html.escape(", ".join(left[:40])))
+        lines.append("Ularni qo'lda kiriting: /tannarx 101")
+
+    await msg.edit_text("\n".join(lines)[:4000], parse_mode="HTML")
 
 
 async def handle_cost_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1968,7 +2078,17 @@ async def cost_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await deny(update)
         return ConversationHandler.END
     if not context.args:
-        await update.message.reply_text("Qaysi tovar? Masalan: /tannarx 101")
+        await update.message.reply_text(
+            "<b>Eski tovarlarga tannarx kiritishning uch yo'li:</b>\n\n"
+            "1️⃣ <b>Hammasini birdan</b> — chat eksportini yuboring.\n"
+            f"{EXPORT_HELP}\n\n"
+            "2️⃣ <b>Bittalab</b> — eski «➕ Ustama: ...» xabarini shu yerga "
+            "qayta yuboring, bot tovarni o'zi topadi.\n\n"
+            "3️⃣ <b>Qo'lda</b> — <code>/tannarx 101</code> deb yozing, "
+            "Poizon ¥ narxini so'rayman.\n\n"
+            "Qaysi tovarlarda tannarx yo'qligi: /tovarlar",
+            parse_mode="HTML",
+        )
         return ConversationHandler.END
 
     product_id = context.args[0].lstrip("#")
@@ -2235,6 +2355,10 @@ def main() -> None:
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.Regex(r"🧴[^\n]*→\s*💰"),
         handle_cost_report,
+    ))
+    # Telegram chat eksporti (result.json) — hammasiga birdan tannarx
+    app.add_handler(MessageHandler(
+        filters.Document.FileExtension("json"), handle_chat_export
     ))
     # reply_conv birinchi: admin javob yozayotganda uning matni tovar
     # narxi yoki raqami deb qabul qilinib ketmasin
