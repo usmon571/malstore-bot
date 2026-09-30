@@ -29,16 +29,21 @@
   }
   textarea{resize:vertical; min-height:70px}
   input:focus,textarea:focus{border-color:var(--accent)}
-  .row{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line)}
+  .row{
+    display:grid; grid-template-columns:1fr 1fr; gap:8px 10px;
+    padding:11px 0; border-bottom:1px solid var(--line);
+  }
   .row:last-child{border-bottom:none}
-  .size{flex:0 0 76px; font-weight:700}
-  .cny{flex:1; min-width:0}
-  .out{flex:0 0 auto; font-size:13px; font-weight:700; color:var(--accent); white-space:nowrap}
+  .size{grid-column:1/-1; font-weight:700}
+  .field{display:flex; flex-direction:column; gap:3px; min-width:0}
+  .cap{font-size:11px; color:var(--hint)}
+  .out{grid-column:1/-1; text-align:right; font-size:13px; font-weight:700; color:var(--accent)}
   .muted{font-size:12.5px; color:var(--hint)}
   .chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
   .chip{
     border:1px solid var(--line); border-radius:999px; padding:6px 13px;
     font-size:13px; font-weight:600; background:var(--bg); color:var(--text); cursor:pointer;
+    text-transform:none; letter-spacing:normal;
   }
   .chip.on{background:var(--accent); color:var(--accent-text); border-color:var(--accent)}
   .total{display:flex; justify-content:space-between; align-items:baseline; padding:7px 0}
@@ -68,9 +73,15 @@
 </div>
 
 <div class="card">
-  <div class="label">Poizon narxi (¥)</div>
+  <div class="label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+    <span>Poizon narxi va vazni</span>
+    <button class="chip" id="resetKg" style="display:none">↻ Avtomatik vazn</button>
+  </div>
   <button id="openApp" class="openbtn" style="display:none">📱 Poizon ilovasida ochish</button>
   <div id="rows"></div>
+  <div class="muted" id="kgNote" style="margin-top:8px">
+    ⚖️ Vazn qadoqlash bilan o'zi hisoblanadi — noto'g'ri bo'lsa o'zgartiring.
+  </div>
   <div class="muted" id="rateNote"></div>
   <div class="warn" id="warn">Barcha variantlar uchun narx kiriting</div>
 </div>
@@ -79,7 +90,8 @@
   <div class="label">Yetkazib berish (so'm)</div>
   <input id="delivery" inputmode="decimal" placeholder="masalan: 35000">
   <div class="muted" id="deliveryNote" style="margin-top:6px">
-    Vaznni aniqlay olmadim — yetkazib berish narxini o'zingiz kiriting.
+    Vazn kiritilmagan variant bor. Vaznni yozsangiz bu maydon kerak emas —
+    yetkazib berish o'zi hisoblanadi.
   </div>
 </div>
 
@@ -158,15 +170,33 @@ const VARIANTS = D.variants || (D.sizes || [0]).map(s => ({
   weightKg: s ? (Number(s) + (D.overhead || 250)) / 1000 : null,
 }));
 
+// Bot hisoblab bergan vazn — «↻ Avtomatik vazn» shu qiymatlarni qaytaradi
+const AUTO_KG = VARIANTS.map(v => v.weightKg ? Number(v.weightKg).toFixed(2) : "");
+
 VARIANTS.forEach((v, i)=>{
   const row = document.createElement("div");
   row.className = "row";
   row.innerHTML =
     `<div class="size">${v.label}</div>
-     <div class="cny"><input inputmode="decimal" placeholder="¥" data-i="${i}"></div>
+     <div class="field">
+       <input inputmode="decimal" placeholder="770" data-i="${i}">
+       <span class="cap">¥ Poizon narxi</span>
+     </div>
+     <div class="field">
+       <input inputmode="decimal" placeholder="0.40" data-w="${i}" value="${AUTO_KG[i]}">
+       <span class="cap">⚖️ vazn, kg</span>
+     </div>
      <div class="out" data-out="${i}">—</div>`;
   rowsEl.appendChild(row);
 });
+
+const kgInput = i => rowsEl.querySelector(`input[data-w="${i}"]`);
+
+/** Kiritilgan vazn (kg) yoki null — bo'sh/noto'g'ri bo'lsa. */
+function kgOf(i){
+  const kg = parseFloat((kgInput(i).value || "").replace(",", "."));
+  return (isNaN(kg) || kg <= 0) ? null : kg;
+}
 
 function trim(n){ return Number(n).toString(); }
 function fmtNum(n){ return Math.round(n).toLocaleString("ru-RU").replace(/ /g," "); }
@@ -195,17 +225,21 @@ function calc(){
     if(isNaN(cny)){ out.textContent = "—"; missing = true; return; }
 
     const base = cny * D.rate;
-    // Vazn ma'lum bo'lsa — o'zi hisoblanadi, bo'lmasa qo'lda kiritilgani
-    const deliv = v.weightKg
-      ? v.weightKg * D.kargoRate
+    // Vazn kiritilgan bo'lsa (o'zi hisoblagani yoki qo'lda o'zgartirilgani)
+    // yetkazib berish shundan chiqadi; bo'lmasa qo'lda kiritilgan narxdan.
+    const kg = kgOf(i);
+    const deliv = kg
+      ? kg * D.kargoRate
       : (parseFloat((deliveryEl.value||"").replace(/[\s,]/g,"")) || 0);
     const fin = applyMarkup(base + deliv, markupText);
     if(fin === null){ out.textContent = "—"; missing = true; return; }
 
     out.textContent = fmtUzs(fin);
     finals[v.label] = fmtUzs(fin);
-    lines.push({label: v.label, weightKg: v.weightKg, cny, base, deliv, fin});
+    lines.push({label: v.label, weightKg: kg, cny, base, deliv, fin});
   });
+
+  syncKgUi();
 
   document.getElementById("warn").style.display = missing ? "block" : "none";
 
@@ -281,21 +315,43 @@ resetBtn.addEventListener("click", ()=>{
   calc();
 });
 
-// Vazni noma'lum variant bo'lsa — yetkazib berish maydonini ko'rsatamiz
-if(VARIANTS.some(v => !v.weightKg)){
-  document.getElementById("deliveryCard").style.display = "block";
+const resetKgBtn = document.getElementById("resetKg");
+
+/** Vazn maydonlariga qarab: «Yetkazib berish (so'm)» kartasi va
+ *  «↻ Avtomatik vazn» tugmasi kerakmi-yo'qmi. */
+function syncKgUi(){
+  // Vazni yo'q variant bo'lsa — yetkazib berishni qo'lda kiritish kerak
+  const anyMissing = VARIANTS.some((v, i) => kgOf(i) === null);
+  document.getElementById("deliveryCard").style.display = anyMissing ? "block" : "none";
+
+  // Qaytarishga arzigulik avtomatik qiymat bo'lsa va u o'zgartirilgan bo'lsa
+  const changed = VARIANTS.some((v, i) =>
+    (kgInput(i).value || "").trim() !== AUTO_KG[i]);
+  resetKgBtn.style.display =
+    (changed && AUTO_KG.some(k => k)) ? "inline-block" : "none";
 }
+
+resetKgBtn.addEventListener("click", ()=>{
+  VARIANTS.forEach((v, i)=>{ kgInput(i).value = AUTO_KG[i]; });
+  calc();
+});
+
 deliveryEl.addEventListener("input", calc);
 
 rowsEl.addEventListener("input", calc);
 titleEl.addEventListener("input", calc);
+// Faqat ustama tugmalari (".chips" ichidagilar). Boshqa joydagi ".chip"
+// tugmalari — «↻ Avtomatik» va «↻ Avtomatik vazn» — bu yerga tushmasin,
+// aks holda ular ustamani o'chirib, hamma narxni buzadi.
+const MARKUP_CHIPS = document.querySelectorAll(".chips .chip");
+
 markupEl.addEventListener("input", ()=>{
-  document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on"));
+  MARKUP_CHIPS.forEach(c=>c.classList.remove("on"));
   calc();
 });
-document.querySelectorAll(".chip").forEach(chip=>{
+MARKUP_CHIPS.forEach(chip=>{
   chip.addEventListener("click", ()=>{
-    document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on"));
+    MARKUP_CHIPS.forEach(c=>c.classList.remove("on"));
     chip.classList.add("on");
     markupEl.value = chip.dataset.m;
     calc();
