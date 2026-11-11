@@ -1,0 +1,21 @@
+{
+  "_izoh": "Serverda bu faylni config.json deb nusxalang va qiymatlarni to'ldiring. config.json git'ga tushmaydi (.gitignore'da). Majburiy: bot_token, channel, allowed_usernames.",
+
+  "bot_token": "BOTFATHER_TOKENINI_SHU_YERGA",
+  "channel": "@kanalingiz",
+  "allowed_usernames": ["username1", "username2"],
+
+  "admin_id": 123456789,
+
+  "card_number": "8600 0000 0000 0000",
+  "card_holder": "ISM FAMILIYA",
+  "prepay_share": 0.7,
+
+  "webapp_url": "https://usmon571.github.io/malstore/",
+
+  "brand_label": "Original",
+  "max_images": 12,
+  "cny_rate": 1761,
+  "order_timeout_minutes": 30,
+  "delivery_rates": { "avto_kargo": 83880, "avia_brend": 156000 }
+}
