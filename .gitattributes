@@ -1,0 +1,5 @@
+# Windows skriptlari aynan CRLF bilan saqlansin (cmd.exe LF'da goto/label'da
+# adashishi mumkin). -text = git qatorma-qator o'zgartirmasin, baytma-bayt saqlasin.
+*.bat -text
+*.cmd -text
+*.ps1 -text
