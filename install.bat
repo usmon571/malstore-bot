@@ -84,6 +84,7 @@ echo ============================================
 echo(
 echo  - Avtostart: kompyuter yonganda bot o'zi ishga tushadi.
 echo  - Yiqilsa o'zi qayta ko'tariladi.
+echo  - Kompyuter endi uxlamaydi - 24/7 ishlaydi.
 echo  - Loglar:  "!APPDIR!bot.log"
 echo(
 echo  Botni HOZIR ishga tushiramanmi? Keyin Telegram'da tekshiring.
@@ -119,10 +120,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ws=New-Object -Co
 exit /b 0
 
 :setup_power
+rem Kompyuter 24/7 ishlashi uchun uxlamasin - ham tarmoqdan, ham batareyadan.
+rem Ekran o'chishi mumkin, lekin kompyuter uxlamaydi, bot ishlab turaveradi.
 powercfg /change standby-timeout-ac 0 >nul 2>&1
+powercfg /change standby-timeout-dc 0 >nul 2>&1
 powercfg /change hibernate-timeout-ac 0 >nul 2>&1
+powercfg /change hibernate-timeout-dc 0 >nul 2>&1
 powercfg /change disk-timeout-ac 0 >nul 2>&1
-echo     Quvvat: tarmoqdan ishlaganda kompyuter uxlamaydi.
+powercfg /change disk-timeout-dc 0 >nul 2>&1
+echo     Quvvat: kompyuter endi uxlamaydi ^(24/7^).
 exit /b 0
 
 :fail
