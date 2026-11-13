@@ -258,6 +258,13 @@ def mark_paid(dsn: str, order_no: int, receipt_file_id: str) -> dict | None:
     )
 
 
+def link_order_user(dsn: str, order_no: int, user_id: int, username: str | None) -> dict | None:
+    return _exec(
+        dsn, "UPDATE orders SET user_id = %s, username = %s WHERE no = %s RETURNING *",
+        (user_id, username, order_no), fetch="one",
+    )
+
+
 def recent_orders(dsn: str, limit: int = 15) -> list[dict]:
     return _exec(
         dsn, "SELECT * FROM orders ORDER BY no DESC LIMIT %s", (limit,), fetch="all"

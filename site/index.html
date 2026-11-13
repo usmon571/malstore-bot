@@ -309,6 +309,80 @@
   .pm-close{position:absolute; top:12px; right:12px; z-index:2; width:40px; height:40px; border-radius:50%; border:none; background:#fff; color:var(--text); cursor:pointer; display:grid; place-items:center; box-shadow:0 4px 14px rgba(0,0,0,.08)}
   .pm-close svg{width:16px; height:16px}
 
+  /* Buyurtma — mahsulot oynasi ichida (variant → forma → to'lov va chek) */
+  button.btn{border:none; cursor:pointer}
+  button.btn-ghost{background:none; border:1.5px solid currentColor}
+  .btn[disabled]{opacity:.55; pointer-events:none}
+  /* Siqilmasin — uzun bo'lsa .pm-info o'zi aylantiriladi */
+  .pm-view{display:flex; flex-direction:column; gap:18px; flex:1 0 auto}
+  .pm-view[hidden]{display:none}
+  button.pm-var{width:100%; border:1.5px solid transparent; font:inherit; color:inherit; text-align:left; align-items:center; cursor:pointer; transition:border-color .2s, background .2s}
+  button.pm-var:hover{border-color:var(--line)}
+  .pm-var.on{border-color:var(--green); background:#EDF9F2}
+  .pm-var span{display:flex; align-items:center; gap:10px}
+  button.pm-var span::before{content:""; flex:0 0 auto; width:16px; height:16px; border-radius:50%; border:2px solid #C5D0E0; transition:border .2s}
+  .pm-var.on span::before{border:5px solid var(--green)}
+  button.pm-var.solo{cursor:default; border-color:transparent; background:var(--paper)}
+  button.pm-var.solo span::before{display:none}
+  .pm-back{align-self:flex-start; border:none; background:none; padding:4px 0; font:600 13px/1 var(--body); color:var(--muted); cursor:pointer}
+  .pm-back:hover{color:var(--text)}
+  .sum{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px; border-radius:12px; background:var(--paper); font-size:14px; color:var(--muted)}
+  .sum b{font:800 16px/1.2 var(--display); font-stretch:110%; color:var(--text); white-space:nowrap}
+  .fld{display:grid; gap:6px}
+  .fld[hidden]{display:none}
+  .fld label{font:600 13px/1.2 var(--body)}
+  .fld input{width:100%; padding:13px 14px; border-radius:12px; border:1.5px solid var(--line); background:#fff; font:500 16px/1.2 var(--body); color:var(--text); outline:none; transition:border-color .2s, box-shadow .2s}
+  .fld input:focus{border-color:var(--green); box-shadow:0 0 0 4px rgba(53,185,108,.15)}
+  .fld.bad input{border-color:#E5484D}
+  .hp{position:absolute; left:-9999px; width:1px; height:1px; opacity:0}
+  .ferr{margin:0; padding:10px 12px; border-radius:10px; background:#FDECEC; color:#B42318; font-size:14px}
+  .ferr[hidden]{display:none}
+  .guide{font-size:13.5px; color:var(--muted)}
+  .guide[hidden]{display:none}
+  .guide summary{cursor:pointer; color:#1E8A4F; font-weight:600}
+  .guide ol{padding-left:18px; margin:10px 0}
+  .guide table{border-collapse:collapse; font-variant-numeric:tabular-nums; color:var(--text)}
+  .guide td{padding:2px 18px 2px 0}
+  .ok-mark{width:56px; height:56px; border-radius:50%; background:var(--green); color:#04140B; display:grid; place-items:center; animation:pop .5s cubic-bezier(.2,.8,.2,1.3)}
+  .ok-mark svg{width:26px; height:26px}
+  @keyframes pop{from{transform:scale(.4); opacity:0}}
+  .st{align-self:flex-start; display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; font:700 12.5px/1 var(--body)}
+  .st::before{content:""; width:8px; height:8px; border-radius:50%; background:currentColor}
+  .st.wait{color:#9A5B00; background:#FFF4E0}
+  .st.info{color:#1D5BD8; background:#E8F0FF}
+  .st.ok{color:#18794E; background:#E6F6EC}
+  .st.bad{color:#B42318; background:#FDECEC}
+  .pay{display:grid; gap:10px; padding:16px; border-radius:14px; border:1.5px solid var(--line)}
+  .pay .amt{font:800 26px/1.1 var(--display); font-stretch:110%}
+  .pay small{color:var(--muted); font-size:13px}
+  .card-no{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 14px; border-radius:12px; background:var(--navy); color:#fff}
+  .card-no code{font:700 clamp(14px, 4.2vw, 17px)/1 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing:.04em; white-space:nowrap}
+  .card-no button{flex:0 0 auto; border:none; border-radius:999px; padding:8px 12px; background:rgba(255,255,255,.14); color:#fff; font:700 10.5px/1 var(--display); font-stretch:110%; letter-spacing:.12em; text-transform:uppercase; cursor:pointer}
+  .drop{position:relative; display:flex; justify-content:center; align-items:center; gap:10px; padding:18px; border-radius:14px; border:2px dashed var(--line); font-weight:600; text-align:center; cursor:pointer; transition:border-color .2s, background .2s}
+  .drop:hover, .drop:focus-within{border-color:var(--green); background:#F3FBF6}
+  .drop input{position:absolute; inset:0; opacity:0; cursor:pointer}
+  .drop.busy{pointer-events:none; opacity:.55}
+  .drop svg{width:20px; height:20px}
+  .msg{margin:0; font-size:14px; color:var(--muted)}
+  .msg.ok{color:#18794E}
+  .msg.bad{color:#B42318}
+  .msg a{color:inherit; font-weight:700}
+  .stack{display:grid; gap:8px}
+
+  /* Buyurtmalarim */
+  .hdr-r{display:flex; align-items:center; gap:18px}
+  .my-orders{border:1.5px solid currentColor; background:none; color:inherit; border-radius:999px; padding:8px 12px; font:700 11px/1 var(--display); font-stretch:110%; letter-spacing:.14em; text-transform:uppercase; cursor:pointer}
+  .my-orders[hidden]{display:none}
+  .od{border:none; padding:0; width:min(560px, calc(100vw - 24px)); max-height:calc(100vh - 24px); border-radius:24px; background:#fff; color:var(--text)}
+  .od::backdrop{background:rgba(6,11,26,.6); backdrop-filter:blur(6px)}
+  .od[open]{animation:pmIn .45s cubic-bezier(.2,.8,.2,1)}
+  .od-in{display:flex; flex-direction:column; gap:18px; padding:clamp(22px, 3vw, 32px); max-height:calc(100vh - 24px); overflow-y:auto}
+  .od-in > h3{margin:0; padding-right:40px; font:800 24px/1.1 var(--display); font-stretch:110%; text-transform:uppercase}
+  .od-list{display:grid; gap:14px}
+  .od-item{display:flex; flex-direction:column; gap:12px; padding:16px; border-radius:16px; background:var(--paper)}
+  .od-item h3{margin:0; font:700 16px/1.4 var(--body)}
+  .od-item .sum{background:#fff}
+
   /* ---------- 7. CTA ---------- */
   .cta{background:#fff; padding:clamp(70px, 10vh, 120px) var(--gutter) clamp(80px, 12vh, 140px); position:relative}
   .cta h2{font-size:clamp(46px, 9vw, 150px)}
@@ -356,6 +430,9 @@
     .pm[open]{grid-template-columns:1fr; overflow-y:auto}
     .pm-main{min-height:0}
     .pm-info{max-height:none}
+    /* Telefonda forma rasm ostida qolib ketmasin */
+    .pm.ordering .pm-gal{display:none}
+    .hdr-r{gap:12px}
   }
   @media (max-width: 520px){
     .svc-grid{grid-template-columns:1fr}
@@ -411,10 +488,13 @@
       <a href="#order">Buyurtma</a>
     </nav>
   </div>
-  <a class="handle" data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 4.3 18.7 19.4c-.2 1-.9 1.3-1.7.8l-4.7-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.8 8.8-7.9c.4-.3-.1-.5-.6-.2L6.6 13.3 2 11.9c-1-.3-1-1 .2-1.5l17.9-6.9c.8-.3 1.6.2 1.3 1.6z"/></svg>
-    <span>@MALSTOREORIGINAL</span>
-  </a>
+  <div class="hdr-r">
+    <button class="my-orders" id="myOrders" type="button" hidden>Buyurtmalarim</button>
+    <a class="handle" data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 4.3 18.7 19.4c-.2 1-.9 1.3-1.7.8l-4.7-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.8 8.8-7.9c.4-.3-.1-.5-.6-.2L6.6 13.3 2 11.9c-1-.3-1-1 .2-1.5l17.9-6.9c.8-.3 1.6.2 1.3 1.6z"/></svg>
+      <span>@MALSTOREORIGINAL</span>
+    </a>
+  </div>
 </header>
 
 <main id="top">
@@ -669,7 +749,7 @@
     <div class="eyebrow">Qanday ishlaydi</div>
     <div class="ms-num" id="msNum">01</div>
     <h3 id="msH">Tanlang</h3>
-    <p id="msP">@malstoreoriginal kanalidan mahsulot tanlang va post ostidagi «Buyurtma berish» havolasini bosing.</p>
+    <p id="msP">Shu saytdan yoki @malstoreoriginal kanalidan mahsulot tanlang va «Buyurtma berish»ni bosing.</p>
     <div class="ms-dots" id="msDots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
   </div>
 </section>
@@ -738,17 +818,82 @@
     <div class="pm-main" id="pmMain"></div>
     <div class="pm-thumbs" id="pmThumbs"></div>
   </div>
-  <div class="pm-info">
-    <div class="eyebrow" id="pmId"></div>
-    <h3 id="pmTitle"></h3>
-    <div class="pm-vars" id="pmVars"></div>
-    <dl class="pm-specs" id="pmSpecs"></dl>
-    <p class="pm-note">Oldindan faqat mahsulot narxi to’lanadi. Yetkazish va xizmat haqi — tovar kelganda.</p>
-    <div class="pm-actions">
-      <a class="btn btn-green" id="pmOrder" target="_blank" rel="noopener">Buyurtma berish
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
-      <a class="btn btn-ghost" id="pmPost" target="_blank" rel="noopener">Kanalda ko’rish</a>
+  <div class="pm-info" id="pmBox">
+    <!-- 1. Mahsulot -->
+    <div class="pm-view" id="pmInfo">
+      <div class="eyebrow" id="pmId"></div>
+      <h3 id="pmTitle"></h3>
+      <div class="pm-vars" id="pmVars" role="radiogroup" aria-label="Variant"></div>
+      <dl class="pm-specs" id="pmSpecs"></dl>
+      <p class="pm-note">Oldindan faqat mahsulot narxi to’lanadi. Yetkazish va xizmat haqi — tovar kelganda.</p>
+      <div class="pm-actions">
+        <button class="btn btn-green" id="pmOrder" type="button">Buyurtma berish
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>
+        <a class="btn btn-ghost" id="pmTg" target="_blank" rel="noopener">Telegram orqali</a>
+        <a class="btn btn-ghost" id="pmPost" target="_blank" rel="noopener">Kanalda ko’rish</a>
+      </div>
     </div>
+
+    <!-- 2. Buyurtma formasi -->
+    <form class="pm-view" id="pmForm" hidden novalidate>
+      <button class="pm-back" id="pmBack" type="button">← Orqaga</button>
+      <div class="eyebrow" style="color:var(--green)">Buyurtma berish</div>
+      <h3 id="fTitle"></h3>
+      <div class="sum" id="fSum"></div>
+      <div class="fld" id="fSizeWrap" hidden>
+        <label for="fSize">Razmer</label>
+        <input id="fSize" autocomplete="off" maxlength="20">
+        <details class="guide" id="fGuide" hidden>
+          <summary>Oyoq o’lchamini qanday aniqlash</summary>
+          <ol>
+            <li>Oq qog’ozni yerga qo’yib, bir chetini devorga tirang.</li>
+            <li>Tovoningiz devorga tegib tursin — qog’oz ustida tik turing.</li>
+            <li>Eng uzun barmoq uchini qalam bilan belgilang.</li>
+            <li>Devordan belgigacha masofani santimetrda o’lchang.</li>
+          </ol>
+          <table>
+            <tr><td>22.0 sm — 35</td><td>26.0 sm — 41</td></tr>
+            <tr><td>22.5 sm — 36</td><td>26.5 sm — 42</td></tr>
+            <tr><td>23.0 sm — 37</td><td>27.0 sm — 43</td></tr>
+            <tr><td>23.5 sm — 37.5</td><td>27.5 sm — 43.5</td></tr>
+            <tr><td>24.0 sm — 38</td><td>28.0 sm — 44</td></tr>
+            <tr><td>24.5 sm — 39</td><td>28.5 sm — 45</td></tr>
+            <tr><td>25.0 sm — 39.5</td><td>29.0 sm — 46</td></tr>
+            <tr><td>25.5 sm — 40.5</td><td>29.5 sm — 46.5</td></tr>
+          </table>
+          <p>Ikkilansangiz santimetrni yozing (masalan: 26.5 sm) — operator tekshirib beradi.</p>
+        </details>
+      </div>
+      <div class="fld">
+        <label for="fName">Ismingiz</label>
+        <input id="fName" autocomplete="name" maxlength="60" required>
+      </div>
+      <div class="fld">
+        <label for="fPhone">Telefon raqam</label>
+        <input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="24" placeholder="+998 90 123 45 67" required>
+      </div>
+      <input class="hp" id="fHp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <p class="ferr" id="fErr" role="alert" hidden></p>
+      <div class="pm-actions">
+        <button class="btn btn-green" id="fSubmit" type="submit">Buyurtmani tasdiqlash
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg></button>
+      </div>
+      <p class="pm-note">Tasdiqlagach to’lov kartasi chiqadi. Operator siz bilan telefon orqali bog’lanadi.</p>
+    </form>
+
+    <!-- 3. Qabul qilindi: to'lov va chek -->
+    <div class="pm-view" id="pmDone" hidden aria-live="polite"></div>
+  </div>
+</dialog>
+
+<dialog class="od" id="od" data-lenis-prevent aria-label="Buyurtmalarim">
+  <button class="pm-close" id="odClose" type="button" aria-label="Yopish">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
+  </button>
+  <div class="od-in">
+    <h3>Buyurtmalarim</h3>
+    <div class="od-list" id="odList"></div>
+    <p class="pm-note">Ro’yxat shu qurilmada saqlanadi. Boshqa telefondan kuzatish uchun buyurtmani Telegram’ga ulang.</p>
   </div>
 </dialog>
 
@@ -760,12 +905,13 @@
     <span class="ln"><span>bir <span class="g">qadam.</span></span></span>
   </h2>
   <div class="cta-row">
-    <p>Kanalimizga qo’shiling, mahsulotni tanlang va bot orqali buyurtma bering. Savollaringiz bo’lsa — botga yozing, operator javob beradi.</p>
+    <p>Mahsulotni shu saytda tanlang va darhol buyurtma bering — to’lov kartaga, chekni shu yerda yuklaysiz. Telegram qulayroqmi? Kanal va bot ham xizmatingizda.</p>
     <div class="cta-actions">
-      <a class="btn btn-green" data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">
-        Telegram kanal
+      <a class="btn btn-green" href="#products">
+        Mahsulotlar
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
       </a>
+      <a class="btn btn-ghost" data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">Telegram kanal</a>
       <a class="btn btn-ghost" data-link="bot" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">Botga yozish</a>
     </div>
   </div>
@@ -1067,8 +1213,8 @@ document.querySelectorAll(".cloud-layer").forEach((layer, li) => {
    Milestone qadamlari
 ================================================================== */
 const STEPS = [
-  ["Tanlang", "@malstoreoriginal kanalidan mahsulot tanlang va post ostidagi «Buyurtma berish» havolasini bosing."],
-  ["Rasmiylashtiring", "Bot variant, o’lcham va telefon raqamingizni so’raydi. Oldindan faqat mahsulotning o’z narxi to’lanadi."],
+  ["Tanlang", "Shu saytdan yoki @malstoreoriginal kanalidan mahsulot tanlang va «Buyurtma berish»ni bosing."],
+  ["Rasmiylashtiring", "Variant, o’lcham va telefon raqamingizni kiriting, chekni yuklang. Oldindan faqat mahsulotning o’z narxi to’lanadi."],
   ["Tekshiruv", "Mahsulot Poizon’da original ekani tekshiriladi va Xitoydagi omborimizga yetkaziladi."],
   ["Yo’lda", "Qadoqlangach, aviapochta yoki avto reys bilan Toshkentga jo’naydi."],
   ["Qo’lingizda", "Tovar yetib keldi — yetkazish va xizmat haqini to’laysiz. Hammasi shu."],
@@ -1306,24 +1452,31 @@ if (!window.gsap || !window.ScrollTrigger) {
 </script>
 <script>
 /* ==================================================================
-   MAHSULOTLAR — bot bilan bitta serverda ishlaydigan API'dan (api.py)
-   API manzili: ?api=... parametri > localhost'da :8081 > CONFIG.api
+   MAHSULOTLAR VA BUYURTMA — bot bilan bitta jarayondagi API'dan (api.py)
+   Baza bitta: saytdan berilgan buyurtma botning o'z saqlagichiga yoziladi
+   va adminga Telegram'da bot buyurtmasi bilan bir xil keladi.
+   API manzili: ?api=... > CONFIG.api > shu sayt manzili > localhost:8081
 ================================================================== */
 (() => {
   const CONFIG = {
-    // Railway'dagi bot servisining domeni, masalan "https://malstore-bot-production.up.railway.app"
+    // Sayt boshqa joyda (masalan GitHub Pages) tursa — botdagi API manzili.
+    // Bo'sh qolsa, sayt bot bilan bitta manzilda turibdi deb hisoblanadi.
     api: "",
     pageSize: 8,
   };
   const qsApi = new URLSearchParams(location.search).get("api");
   const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-  const API = (qsApi || (local ? "http://localhost:8081" : CONFIG.api)).replace(/\/$/, "");
+  const sameOrigin = /^https?:$/.test(location.protocol) ? location.origin : "";
+  let API = "";
 
-  const grid = document.getElementById("prGrid");
-  const count = document.getElementById("prCount");
-  const more = document.getElementById("prMore");
+  const $ = id => document.getElementById(id);
+  const grid = $("prGrid");
+  const count = $("prCount");
+  const more = $("prMore");
   const BAG = '<svg viewBox="0 0 64 64"><path d="M20 20V14a12 12 0 0 1 24 0v6" fill="none" stroke="#12244F" stroke-width="5.5" stroke-linecap="round"/><rect x="8" y="19" width="48" height="38" rx="10" fill="#12244F"/><path d="M20 47V33l12 10 12-10v14" fill="none" stroke="#EEF2F8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const ARROW = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>';
+  const CHECK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
+  const UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>';
 
   let items = [], shown = 0, channelUrl = "https://t.me/malstoreoriginal";
 
@@ -1337,11 +1490,51 @@ if (!window.gsap || !window.ScrollTrigger) {
   // API'dan kelgan havolalardan faqat Telegram'nikiga ruxsat
   const safeUrl = u => (typeof u === "string" && /^https:\/\/t\.me\//.test(u) ? u : "");
   const amount = s => +String(s).replace(/[^\d]/g, "") || 0;
-  // "0 ml" — bot bitta variantli tovarlarda shunday yozib qo'yadi
-  const variants = p => Object.entries(p.prices || {}).map(([label, price]) => ({
-    label: /^0\s*(ml)?$/i.test(label.trim()) ? "" : label, price,
+  // "0 ml" — bot bitta variantli tovarlarda shunday yozib qo'yadi; kalit
+  // (key) buyurtmada o'zgarmasdan yuboriladi, faqat ko'rinishi tozalanadi
+  const variants = p => Object.entries(p.prices || {}).map(([key, price]) => ({
+    key, price, label: /^0\s*(ml)?$/i.test(key.trim()) ? "" : key,
   }));
   const refresh = () => window.ScrollTrigger && ScrollTrigger.refresh();
+
+  // Brauzer xotirasi — faqat qulaylik uchun (bo'lmasa ham sayt ishlaydi)
+  const LS = {
+    get(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+
+  // Sayt odatda bot bilan bitta manzilda (api.py o'zi tarqatadi). Alohida
+  // statik serverda ochilgan bo'lsa (lokal sinov) — botni :8081 dan qidiramiz.
+  let apiReady = null;
+  function resolveApi() {
+    return apiReady ||= (async () => {
+      const fixed = qsApi || CONFIG.api;
+      const candidates = fixed ? [fixed] : [sameOrigin, local ? "http://localhost:8081" : ""];
+      for (const c of [...new Set(candidates)].filter(Boolean)) {
+        API = c.replace(/\/$/, "");
+        const r = await call("/api/products?limit=60", {}, 12000);
+        if (r.ok && Array.isArray(r.data.products)) return r;
+      }
+      API = "";
+      return null;
+    })();
+  }
+
+  async function call(path, opts = {}, timeout = 20000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const res = await fetch(API + path, { ...opts, signal: ctrl.signal });
+      const data = await res.json().catch(() => ({}));
+      return { ok: res.ok, status: res.status, data };
+    } catch {
+      return { ok: false, status: 0, data: { error: "Aloqa yo’q. Internetni tekshirib, qayta urinib ko’ring." } };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  // ================= Katalog =================
 
   function skeleton(n) {
     grid.replaceChildren(...Array.from({ length: n }, () => {
@@ -1420,14 +1613,29 @@ if (!window.gsap || !window.ScrollTrigger) {
   }
   more.addEventListener("click", showMore);
 
-  // ---- Mahsulot oynasi
-  const pm = document.getElementById("pm");
-  const $ = id => document.getElementById(id);
+  // ================= Mahsulot oynasi =================
+
+  const pm = $("pm");
+  const views = { info: $("pmInfo"), form: $("pmForm"), done: $("pmDone") };
+  let current = null, chosen = null;
+
+  function show(view) {
+    Object.entries(views).forEach(([k, v]) => (v.hidden = k !== view));
+    pm.classList.toggle("ordering", view !== "info");
+    $("pmBox").scrollTop = 0; pm.scrollTop = 0;
+    const head = views[view].querySelector("h3");
+    if (head) { head.tabIndex = -1; head.focus({ preventScroll: true }); }
+  }
+
   function setMain(src, alt) {
     const img = el("img"); img.src = src; img.alt = alt;
     $("pmMain").replaceChildren(img);
   }
+
   function openModal(p) {
+    current = p;
+    const vs = variants(p);
+    chosen = vs.length ? vs[0].key : null;
     $("pmId").textContent = `#${p.id} · 100% Original`;
     $("pmTitle").textContent = p.title;
 
@@ -1448,18 +1656,34 @@ if (!window.gsap || !window.ScrollTrigger) {
       $("pmMain").replaceChildren(placeholder());
     }
 
-    $("pmVars").replaceChildren(...variants(p).map(v => {
-      const r = el("div", "pm-var");
-      r.append(el("span", null, v.label || "Narxi"), el("b", null, v.price));
-      return r;
+    // Variant tanlash (bittasi bo'lsa — shunchaki narx)
+    const solo = vs.length === 1;
+    $("pmVars").replaceChildren(...vs.map(v => {
+      const b = el("button", "pm-var" + (v.key === chosen ? " on" : "") + (solo ? " solo" : ""));
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(v.key === chosen));
+      b.append(el("span", null, v.label || "Narxi"), el("b", null, v.price));
+      if (!solo) b.addEventListener("click", () => {
+        chosen = v.key;
+        $("pmVars").querySelectorAll(".pm-var").forEach(x => {
+          x.classList.toggle("on", x === b);
+          x.setAttribute("aria-checked", String(x === b));
+        });
+      });
+      return b;
     }));
     $("pmSpecs").replaceChildren(...(p.specs || []).flatMap(([k, v]) => [el("dt", null, k), el("dd", null, v)]));
 
-    $("pmOrder").href = safeUrl(p.order_url) || channelUrl;
+    $("pmOrder").disabled = !vs.length;
+    const tg = safeUrl(p.order_url);
+    $("pmTg").hidden = !tg;
+    if (tg) $("pmTg").href = tg;
     const post = safeUrl(p.post_url);
     $("pmPost").hidden = !post;
     if (post) $("pmPost").href = post;
 
+    show("info");
     window.__lenis && window.__lenis.stop();
     pm.showModal();
   }
@@ -1467,33 +1691,282 @@ if (!window.gsap || !window.ScrollTrigger) {
   $("pmClose").addEventListener("click", () => pm.close());
   pm.addEventListener("click", e => { if (e.target === pm) pm.close(); });
 
-  // ---- Yuklash
-  async function load() {
-    if (!API) return fallback("Mahsulotlar kanalda", "Barcha mahsulotlar va narxlar Telegram kanalimizda.");
-    skeleton(4);
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 12000);
-      const res = await fetch(`${API}/api/products?limit=60`, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      if (safeUrl(data.channel)) channelUrl = data.channel;
-      // Bot username API'dan keladi — "Botga yozish" tugmalari ham botni ochsin
-      if (safeUrl(data.bot)) document.querySelectorAll('[data-link="bot"]').forEach(a => (a.href = data.bot));
-      items = Array.isArray(data.products) ? data.products : [];
-      if (!items.length) return fallback("Tez orada", "Yangi mahsulotlar kanalda e’lon qilinadi.");
-      count.textContent = `${items.length} ta mahsulot`;
-      showMore();
-    } catch (e) {
-      console.warn("Mahsulotlar yuklanmadi:", e);
-      fallback("Mahsulotlar kanalda", "Hozir ro’yxatni yuklab bo’lmadi — kanalimizda ko’ring.");
+  // ================= Buyurtma formasi =================
+
+  const form = $("pmForm");
+  const FIELD_INPUT = { size: "fSize", name: "fName", phone: "fPhone" };
+
+  $("pmOrder").addEventListener("click", () => {
+    const p = current;
+    const v = variants(p).find(x => x.key === chosen);
+    if (!v) return;
+    $("fTitle").textContent = p.title;
+    $("fSum").replaceChildren(el("span", null, v.label || "Narxi"), el("b", null, v.price));
+    $("fSizeWrap").hidden = !p.needs_size;
+    $("fGuide").hidden = !p.foot_guide;
+    $("fSize").placeholder = p.foot_guide ? "Masalan: 42 yoki 26.5 sm" : "Masalan: 42, M yoki XL";
+    $("fSize").value = "";
+    const saved = LS.get("malstore_contact", {});
+    if (!$("fName").value && saved.name) $("fName").value = saved.name;
+    if (!$("fPhone").value) $("fPhone").value = saved.phone || "+998 ";
+    clearErrors();
+    show("form");
+  });
+  $("pmBack").addEventListener("click", () => show("info"));
+
+  function clearErrors() {
+    $("fErr").hidden = true;
+    form.querySelectorAll(".fld").forEach(f => f.classList.remove("bad"));
+  }
+  function fail(message, field) {
+    $("fErr").textContent = message;
+    $("fErr").hidden = false;
+    const input = field && $(FIELD_INPUT[field] || "");
+    if (input) { input.closest(".fld").classList.add("bad"); input.focus(); }
+  }
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    clearErrors();
+    const p = current;
+    const size = $("fSize").value.trim();
+    const name = $("fName").value.trim();
+    const phone = $("fPhone").value.trim();
+    if (p.needs_size && !size) return fail("Razmerni kiriting.", "size");
+    if (name.length < 2) return fail("Ismingizni kiriting.", "name");
+    if (phone.replace(/\D/g, "").length < 9) return fail("Telefon raqamni to’liq kiriting.", "phone");
+
+    const btn = $("fSubmit");
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.textContent = "Yuborilmoqda…";
+    const r = await call("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: p.id, variant: chosen, size, name, phone, website: $("fHp").value }),
+    });
+    btn.disabled = false; btn.innerHTML = label;
+    if (!r.ok) return fail(r.data.error || "Buyurtma yuborilmadi. Qayta urinib ko’ring.", r.data.field);
+
+    LS.set("malstore_contact", { name, phone });
+    rememberOrder(r.data, r.data.token);
+    renderOrder($("pmDone"), r.data, r.data.token, true);
+    show("done");
+  });
+
+  // ================= Buyurtma ko'rinishi (oynada va «Buyurtmalarim»da) =================
+
+  const STATUS = {
+    "to'lov kutilmoqda": ["To’lov kutilmoqda", "wait"],
+    "chek yuborilgan": ["Chek tekshirilmoqda", "info"],
+    "to'lov tasdiqlandi": ["To’lov tasdiqlandi", "ok"],
+    "yo'lda": ["Yo’lda", "info"],
+    "keldi": ["Toshkentga keldi", "ok"],
+    "topshirildi": ["Topshirildi", "ok"],
+    "bekor qilindi": ["Bekor qilindi", "bad"],
+  };
+
+  function renderOrder(box, o, token, fresh = false) {
+    const parts = [];
+    if (fresh) { const m = el("div", "ok-mark"); m.innerHTML = CHECK; parts.push(m); }
+    parts.push(el("div", "eyebrow", `Buyurtma #${o.no}`));
+    parts.push(el("h3", null, fresh ? "Buyurtma qabul qilindi!" : (o.product.title || `Buyurtma #${o.no}`)));
+    const [stText, stClass] = STATUS[o.status] || [o.status || "—", "info"];
+    parts.push(el("span", "st " + stClass, stText));
+
+    const sum = el("div", "sum");
+    const variant = /^0\s*(ml)?$/i.test(o.variant || "") ? "" : o.variant;
+    sum.append(
+      el("span", null, [fresh ? o.product.title : "", variant, o.size ? `Razmer: ${o.size}` : ""].filter(Boolean).join(" · ")),
+      el("b", null, o.price),
+    );
+    parts.push(sum);
+
+    const waiting = o.status === "to'lov kutilmoqda";
+    if (waiting && o.payment) {
+      const pay = el("div", "pay");
+      pay.append(
+        el("small", null, "Oldindan to’lov"),
+        el("div", "amt", o.prepay),
+        el("small", null, o.payment.by_cost
+          ? "Bu — mahsulotning o’z narxi. Yetkazish va xizmat haqi tovar kelganda to’lanadi."
+          : `Narxning ${Math.round(o.payment.share * 100)}% i. Qolgani tovar kelganda to’lanadi.`),
+      );
+      const cardNo = el("div", "card-no");
+      const copy = el("button", null, "Nusxa"); copy.type = "button";
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(o.payment.card_number.replace(/\s/g, ""));
+          copy.textContent = "Nusxalandi ✓";
+        } catch {
+          copy.textContent = "Qo’lda belgilang";
+        }
+        setTimeout(() => (copy.textContent = "Nusxa"), 2200);
+      });
+      cardNo.append(el("code", null, o.payment.card_number), copy);
+      pay.append(cardNo);
+      if (o.payment.card_holder) pay.append(el("small", null, o.payment.card_holder));
+      parts.push(pay);
+    } else if (waiting) {
+      parts.push(el("p", "msg", "Operator to’lov ma’lumotlari bilan siz bilan bog’lanadi."));
     }
+
+    if (o.receipt) parts.push(el("p", "msg ok", "✓ Chek qabul qilindi. To’lov tekshirilgach siz bilan bog’lanamiz."));
+    if ((waiting && o.payment) || o.status === "chek yuborilgan") {
+      parts.push(receiptPicker(box, o, token, fresh));
+    }
+
+    const tg = safeUrl(o.telegram_url);
+    if (tg && !o.telegram_linked) {
+      const wrap = el("div", "stack");
+      const a = el("a", "btn btn-ghost", "Telegram’da kuzatish");
+      a.href = tg; a.target = "_blank"; a.rel = "noopener";
+      a.style.justifySelf = "start";
+      wrap.append(a, el("p", "msg", "Holat o’zgarganda Telegram’ga xabar keladi."));
+      parts.push(wrap);
+    }
+    if (fresh) parts.push(el("p", "pm-note", "Buyurtma «Buyurtmalarim» bo’limida saqlanadi — keyin ham chek yuklab, holatini ko’rishingiz mumkin."));
+    box.replaceChildren(...parts);
+  }
+
+  function receiptPicker(box, o, token, fresh) {
+    const wrap = el("div", "stack");
+    const drop = el("label", "drop");
+    drop.innerHTML = UPLOAD;
+    drop.append(el("span", null, o.receipt ? "Boshqa chek yuklash" : "To’lov chekini yuklang (rasm yoki PDF)"));
+    const input = el("input");
+    input.type = "file";
+    input.accept = "image/*,application/pdf";
+    drop.append(input);
+    const msg = el("p", "msg");
+    msg.setAttribute("aria-live", "polite");
+
+    input.addEventListener("change", async () => {
+      const file = input.files[0];
+      if (!file) return;
+      drop.classList.add("busy");
+      msg.className = "msg"; msg.textContent = "Yuklanmoqda…";
+      const r = await uploadReceipt(o.no, token, file);
+      drop.classList.remove("busy");
+      input.value = "";
+      if (r.ok) return renderOrder(box, r.data, token, fresh);
+      msg.className = "msg bad";
+      msg.textContent = (r.data.error || "Chek yuklanmadi.") + " ";
+      const tg = safeUrl(r.data.telegram_url);
+      if (tg) {
+        const a = el("a", null, "Telegram orqali yuborish");
+        a.href = tg; a.target = "_blank"; a.rel = "noopener";
+        msg.append(a);
+      }
+    });
+    wrap.append(drop, msg);
+    return wrap;
+  }
+
+  const TYPE_BY_EXT = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+    heic: "image/heic", heif: "image/heif", pdf: "application/pdf",
+  };
+
+  // Telefon rasmi 5–12 MB bo'ladi — sekin internetda yuklash uchun kichraytiramiz
+  async function shrink(file) {
+    if (!window.createImageBitmap) return file;
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+      if (k === 1 && file.size < 2.5e6 && file.type === "image/jpeg") return file;
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise(res => c.toBlob(res, "image/jpeg", .85));
+      return blob && blob.size < file.size ? blob : file;
+    } catch {
+      return file;  // brauzer formatni ocholmadi (masalan HEIC) — o'zini yuboramiz
+    }
+  }
+
+  async function uploadReceipt(no, token, file) {
+    let type = file.type || TYPE_BY_EXT[(file.name.split(".").pop() || "").toLowerCase()] || "";
+    if (!/^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/.test(type)) {
+      return { ok: false, data: { error: "Chek rasm (JPG, PNG) yoki PDF bo’lsin." } };
+    }
+    let body = file;
+    if (type.startsWith("image/")) {
+      const small = await shrink(file);
+      if (small !== file) { body = small; type = "image/jpeg"; }
+    }
+    if (body.size > 10 * 1024 * 1024) {
+      return { ok: false, data: { error: "Fayl juda katta (ko’pi bilan 10 MB)." } };
+    }
+    return call(`/api/orders/${no}/receipt?t=${encodeURIComponent(token)}`, {
+      method: "POST", headers: { "Content-Type": type }, body,
+    }, 90000);
+  }
+
+  // ================= Buyurtmalarim =================
+
+  const od = $("od");
+  const myBtn = $("myOrders");
+  const myOrders = () => LS.get("malstore_orders", []).filter(o => o && o.no && o.token);
+
+  function rememberOrder(o, token) {
+    const list = myOrders().filter(x => x.no !== o.no);
+    list.unshift({ no: o.no, token, at: Date.now() });
+    LS.set("malstore_orders", list.slice(0, 20));
+    syncMyOrders();
+  }
+  function syncMyOrders() {
+    const n = myOrders().length;
+    myBtn.hidden = !n;
+    myBtn.textContent = `Buyurtmalarim · ${n}`;
+  }
+
+  myBtn.addEventListener("click", async () => {
+    await resolveApi();
+    const list = myOrders();
+    const boxes = list.map(x => {
+      const d = el("div", "od-item");
+      d.append(el("div", "eyebrow", `Buyurtma #${x.no}`), el("p", "msg", "Yuklanmoqda…"));
+      return d;
+    });
+    $("odList").replaceChildren(...boxes);
+    window.__lenis && window.__lenis.stop();
+    od.showModal();
+    await Promise.all(list.map(async (x, i) => {
+      const r = await call(`/api/orders/${x.no}?t=${encodeURIComponent(x.token)}`);
+      if (r.ok) return renderOrder(boxes[i], r.data, x.token);
+      boxes[i].replaceChildren(
+        el("div", "eyebrow", `Buyurtma #${x.no}`),
+        el("p", "msg bad", r.status === 403 || r.status === 404 ? "Buyurtma topilmadi." : r.data.error || "Yuklab bo’lmadi."),
+      );
+    }));
+  });
+  od.addEventListener("close", () => window.__lenis && window.__lenis.start());
+  $("odClose").addEventListener("click", () => od.close());
+  od.addEventListener("click", e => { if (e.target === od) od.close(); });
+  syncMyOrders();
+
+  // ================= Yuklash =================
+
+  async function load() {
+    skeleton(4);
+    const r = await resolveApi();
+    if (!r) {
+      console.warn("Mahsulotlar yuklanmadi: bot API'si topilmadi");
+      return fallback("Mahsulotlar kanalda", "Hozir ro’yxatni yuklab bo’lmadi — kanalimizda ko’ring.");
+    }
+    const data = r.data;
+    if (safeUrl(data.channel)) channelUrl = data.channel;
+    // Bot username API'dan keladi — "Botga yozish" tugmalari ham botni ochsin
+    if (safeUrl(data.bot)) document.querySelectorAll('[data-link="bot"]').forEach(a => (a.href = data.bot));
+    items = Array.isArray(data.products) ? data.products : [];
+    if (!items.length) return fallback("Tez orada", "Yangi mahsulotlar kanalda e’lon qilinadi.");
+    count.textContent = `${items.length} ta mahsulot`;
+    showMore();
   }
   // Bo'limga yaqinlashganda yuklaymiz — hero animatsiyasiga xalal bermasin
   new IntersectionObserver((en, io) => {
     if (en[0].isIntersecting) { io.disconnect(); load(); }
-  }, { rootMargin: "1200px 0px" }).observe(document.getElementById("products"));
+  }, { rootMargin: "1200px 0px" }).observe($("products"));
 })();
 </script>
 </body>

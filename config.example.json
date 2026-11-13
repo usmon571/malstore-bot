@@ -13,6 +13,8 @@
 
   "webapp_url": "https://usmon571.github.io/malstore/",
 
+  "api_port": 8081,
+
   "brand_label": "Original",
   "max_images": 12,
   "cny_rate": 1761,

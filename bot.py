@@ -19,6 +19,7 @@ import logging
 import re
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import requests
 from bs4 import BeautifulSoup
@@ -90,6 +91,11 @@ CARD_HOLDER = settings.CARD_HOLDER
 
 # Bot username — deep link uchun kerak, ishga tushganda aniqlanadi
 BOT_USERNAME = ""
+
+# Sayt API'si alohida oqimda ishlaydi; u Telegram'ga xabar yuborishi uchun
+# botning o'zi va uning event loop'i kerak (ishga tushganda yoziladi)
+APP: Application | None = None
+MAIN_LOOP: asyncio.AbstractEventLoop | None = None
 
 
 def order_link(product_id: str) -> str:
@@ -174,11 +180,16 @@ def _title_has(product: dict, hints: tuple) -> bool:
     return any(hint in title for hint in hints)
 # Atir narxlari "50 ml" ko'rinishida bo'ladi — bunda razmer so'ralmaydi
 ML_LABEL_RE = re.compile(r"\d\s*ml\b", re.I)
+# Eski tovarlarda bitta variantli narx "0 ml" deb yozilgan — bu hajm emas,
+# aks holda hoodie yoki krossovkada ham razmer so'ralmay qolardi
+ZERO_ML_RE = re.compile(r"^0\s*(ml)?$", re.I)
 
 
 def needs_size(product: dict) -> bool:
     """Atir/suyuqlikdan boshqa hamma narsada razmer so'raladi."""
-    labels = " ".join(product.get("prices", {}).keys())
+    labels = " ".join(
+        k for k in product.get("prices", {}) if not ZERO_ML_RE.match(k.strip())
+    )
     if ML_LABEL_RE.search(labels):
         return False
     title = product.get("title", "").lower()
@@ -374,6 +385,20 @@ def format_uzs(amount: float) -> str:
     """So'mni eng yaqin 1000 ga yaxlitlab, chiroyli ko'rinishda qaytaradi."""
     rounded = int(round(amount / 1000.0)) * 1000
     return f"{rounded:,}".replace(",", " ") + " so'm"
+
+
+def prepay_for(product: dict, variant: str) -> tuple[str, bool]:
+    """Oldindan to'lov: (matn, tannarxdanmi).
+
+    Odatda — mahsulotning tannarxi (yetkazib berish va ustamasiz). Eski
+    tovarlarda tannarx saqlanmagan, ularda narxning PREPAY_SHARE ulushi.
+    Bot ham, sayt ham shu yerdan hisoblaydi.
+    """
+    prepay_text = (product.get("base_prices") or {}).get(variant, "")
+    if prepay_text:
+        return prepay_text, True
+    price_value = parse_amount(product.get("prices", {}).get(variant, "")) or 0.0
+    return (format_uzs(price_value * PREPAY_SHARE) if price_value else "—"), False
 
 
 def apply_markup(base_uzs: float, markup_text: str) -> float | None:
@@ -694,10 +719,17 @@ def photo_ids(messages) -> list[str]:
     return [m.photo[-1].file_id for m in messages if m and getattr(m, "photo", None)]
 
 
+# Saytdagi «Telegram'da kuzatish» havolasi: /start o12_<token>
+SITE_ORDER_ARG_RE = re.compile(r"^o(\d{1,7})_([0-9a-f]{20})$")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """/start — xaridor uchun buyurtma, admin uchun tovar joylash."""
-    # Kanaldagi havola bosilganda: /start 101
     if context.args:
+        m = SITE_ORDER_ARG_RE.match(context.args[0])
+        if m:
+            return await link_site_order(update, context, int(m.group(1)), m.group(2))
+        # Kanaldagi havola bosilganda: /start 101
         return await show_product_for_order(update, context, context.args[0])
 
     if is_allowed(update):
@@ -714,6 +746,54 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         "Yoki tovar raqamini yozing (masalan: 101)"
     )
     return ConversationHandler.END
+
+
+async def link_site_order(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, order_no: int, token: str
+) -> int:
+    """Saytdan buyurtma bergan mijoz uni Telegram'iga uladi: endi holat
+    xabarlari unga keladi, to'lanmagan bo'lsa chekni shu yerda yuborishi mumkin."""
+    order = store.get_order(order_no) if api.check_order_token(order_no, token) else None
+    if not order:
+        await update.message.reply_text("Buyurtma topilmadi. Havolani saytdan qayta oching.")
+        return ConversationHandler.END
+
+    user = update.effective_user
+    order = store.link_order_user(order_no, user.id, user.username) or order
+    product = store.get_product(order["product_id"]) or {}
+    variant = order.get("variant", "")
+
+    lines = [
+        f"✅ Buyurtma <b>#{order_no}</b> Telegram'ingizga ulandi.",
+        "Holati o'zgarganda shu yerga xabar keladi.",
+        "",
+        f"🛍 {html.escape(product.get('title', '')[:60])}",
+        f"📦 {html.escape(variant)} — {html.escape(order.get('price') or '—')}",
+    ]
+    if order.get("size"):
+        lines.append(f"📏 Razmer: {html.escape(order['size'])}")
+    lines.append(f"📋 Holat: <b>{html.escape(order.get('status', ''))}</b>")
+
+    awaiting = bool(CARD_NUMBER) and order.get("status") == "to'lov kutilmoqda"
+    if awaiting:
+        # handle_order_receipt shu ma'lumotlar bilan ishlaydi
+        context.user_data.update(
+            order_no=order_no, order_product=product, order_variant=variant,
+            order_size=order.get("size", ""), phone=order.get("phone", ""),
+            prepay=order.get("prepay") or "—",
+            prepay_by_cost=prepay_for(product, variant)[1],
+        )
+        lines += [
+            "",
+            f"💳 Oldindan to'lov: <b>{html.escape(order.get('prepay') or '—')}</b>",
+            f"Karta: <code>{html.escape(CARD_NUMBER)}</code>",
+        ]
+        if CARD_HOLDER:
+            lines.append(f"👤 {html.escape(CARD_HOLDER)}")
+        lines += ["", "Chekni saytda yuklamagan bo'lsangiz — <b>rasmini shu yerga yuboring</b> 📸"]
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    return ORDER_RECEIPT if awaiting else ConversationHandler.END
 
 
 async def show_product_for_order(
@@ -978,13 +1058,7 @@ async def handle_order_contact(update: Update, context: ContextTypes.DEFAULT_TYP
 
     user = update.effective_user
     price_text = product.get("prices", {}).get(variant, "")
-    # Oldindan to'lov — mahsulotning tannarxi (yetkazib berish va ustamasiz).
-    # Eski tovarlarda tannarx saqlanmagan, ularda avvalgidek ulush olinadi.
-    prepay_text = (product.get("base_prices") or {}).get(variant, "")
-    by_cost = bool(prepay_text)
-    if not by_cost:
-        price_value = parse_amount(price_text) or 0.0
-        prepay_text = format_uzs(price_value * PREPAY_SHARE) if price_value else "—"
+    prepay_text, by_cost = prepay_for(product, variant)
 
     order_no = store.add_order(
         product_id=product["id"],
@@ -1166,7 +1240,14 @@ async def handle_status_change(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as e:
             log.warning("xaridorga xabar yetmadi (#%s): %s", order_no, e)
 
-    note = "xaridorga xabar yuborildi" if delivered else "⚠️ xaridorga xabar yetmadi"
+    if delivered:
+        note = "xaridorga xabar yuborildi"
+    elif not order.get("user_id") and order.get("phone"):
+        # Saytdan berilgan va Telegram'ga ulanmagan buyurtma — mijoz holatni
+        # saytda ko'radi, lekin muhim bosqichda qo'ng'iroq qilgan yaxshi
+        note = f"🌐 sayt buyurtmasi — mijoz saytda ko'radi, kerak bo'lsa qo'ng'iroq: {order['phone']}"
+    else:
+        note = "⚠️ xaridorga xabar yetmadi"
     try:
         await query.edit_message_reply_markup(
             reply_markup=status_keyboard(order_no, order.get("user_id"))
@@ -1174,6 +1255,120 @@ async def handle_status_change(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text(f"#{order_no} → {label} · {note}")
     except Exception:
         pass
+
+
+# ---------- sayt buyurtmalari (api.py'dan, boshqa oqimdan keladi) ----------
+
+def site_order_lines(order: dict, product: dict) -> list[str]:
+    lines = [
+        f"🆔 Tovar: {html.escape(str(order.get('product_id', '')))} — "
+        f"{html.escape(product.get('title', '')[:55])}",
+        f"📦 {html.escape(order.get('variant', ''))} — {html.escape(order.get('price') or '—')}",
+    ]
+    if order.get("size"):
+        lines.append(f"📏 Razmer: {html.escape(order['size'])}")
+    lines.append(f"💳 Oldindan to'lov: {html.escape(order.get('prepay') or '—')}")
+    lines.append(f"📞 {html.escape(order.get('phone') or '—')}")
+    lines.append(f"👤 {html.escape(order.get('name') or '—')}")
+    if product.get("url"):
+        lines.append(f"🔗 {html.escape(product['url'])}")
+    return lines
+
+
+async def notify_site_order(order: dict, product: dict) -> None:
+    text = (
+        f"🌐 <b>Saytdan yangi buyurtma #{order['no']}</b> — to'lov kutilmoqda\n\n"
+        + "\n".join(site_order_lines(order, product))
+    )
+    if not product.get("base_prices"):
+        text += (
+            f"\n\n⚠️ Tannarx saqlanmagan — oldindan to'lov {PREPAY_SHARE:.0%} olinadi. "
+            f"Tuzatish: /tannarx {html.escape(str(order.get('product_id', '')))}"
+        )
+    await notify_admins(SimpleNamespace(bot=APP.bot), text, status_keyboard(order["no"]))
+
+
+PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+RECEIPT_EXT = {
+    "image/png": "png", "image/webp": "webp", "image/heic": "heic",
+    "image/heif": "heif", "application/pdf": "pdf",
+}
+
+
+async def _send_receipt(chat_id: int, media, as_photo: bool, filename: str, caption: str, keyboard):
+    if as_photo:
+        return await APP.bot.send_photo(
+            chat_id=chat_id, photo=media, caption=caption,
+            parse_mode="HTML", reply_markup=keyboard,
+        )
+    return await APP.bot.send_document(
+        chat_id=chat_id, document=media, filename=filename, caption=caption,
+        parse_mode="HTML", reply_markup=keyboard,
+    )
+
+
+async def send_site_receipt(order: dict, product: dict, data: bytes, content_type: str) -> str:
+    """Saytdan yuklangan chekni adminlarga yuboradi va Telegram file_id'sini
+    qaytaradi — buyurtmaga shu yoziladi (botdagi chek bilan bir xil)."""
+    no = order["no"]
+    caption = (
+        f"🔔 <b>Buyurtma #{no}</b> — to'lov cheki (🌐 sayt)\n\n"
+        + "\n".join(site_order_lines(order, product))
+    )
+    keyboard = status_keyboard(no, order.get("user_id"))
+    filename = f"chek-{no}.{RECEIPT_EXT.get(content_type, 'jpg')}"
+    as_photo = content_type in PHOTO_TYPES
+    file_id = None
+
+    for admin in admin_targets():
+        # Birinchi adminga fayl yuklanadi, qolganlariga uning file_id'si
+        media = file_id or data
+        try:
+            msg = await _send_receipt(admin, media, as_photo, filename, caption, keyboard)
+        except BadRequest as e:
+            if not (as_photo and not file_id):
+                log.warning("adminga sayt cheki yuborilmadi (%s): %s", admin, e)
+                continue
+            # Telegram rasmni qabul qilmadi (juda katta/g'alati o'lcham) — hujjat qilib
+            log.warning("chek rasm sifatida ketmadi (%s) — hujjat qilib yuboramiz", e)
+            as_photo = False
+            try:
+                msg = await _send_receipt(admin, data, False, filename, caption, keyboard)
+            except Exception as inner:
+                log.warning("adminga sayt cheki yuborilmadi (%s): %s", admin, inner)
+                continue
+        except Exception as e:
+            log.warning("adminga sayt cheki yuborilmadi (%s): %s", admin, e)
+            continue
+        if not file_id:
+            file_id = msg.photo[-1].file_id if as_photo else msg.document.file_id
+
+    if not file_id:
+        raise RuntimeError("chek hech bir adminga yetmadi")
+    return file_id
+
+
+def _in_bot_loop(coro, timeout: float = 60):
+    """Sayt API'si oqimidan botning event loop'ida bajaradi va natijani kutadi."""
+    if not (APP and MAIN_LOOP):
+        coro.close()
+        raise RuntimeError("bot hali ishga tushmagan")
+    return asyncio.run_coroutine_threadsafe(coro, MAIN_LOOP).result(timeout)
+
+
+def site_hooks() -> api.Hooks:
+    """Sayt API'si buyurtmani botdagi qoidalar bilan hisoblashi uchun."""
+    return api.Hooks(
+        bot_username=lambda: BOT_USERNAME,
+        needs_size=needs_size,
+        foot_guide=wants_foot_guide,
+        clean_size=clean_size,
+        prepay=prepay_for,
+        order_created=lambda order, product: _in_bot_loop(notify_site_order(order, product)),
+        receipt=lambda order, product, data, ctype: _in_bot_loop(
+            send_site_receipt(order, product, data, ctype)
+        ),
+    )
 
 
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1191,13 +1386,15 @@ async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         product = store.get_product(order["product_id"]) or {}
         when = order["created"].replace("T", " ")[5:16]
         mark = "✅" if order.get("receipt") else "⏳"
+        source = "" if order.get("user_id") else " · 🌐 sayt"
         lines.append(
-            f"{mark} <b>#{order['no']}</b> · {when} · {html.escape(order.get('status', ''))}\n"
+            f"{mark} <b>#{order['no']}</b> · {when} · {html.escape(order.get('status', ''))}{source}\n"
             f"🆔 {order['product_id']} {html.escape(product.get('title', '')[:40])}\n"
             f"📦 {html.escape(order['variant'])} — {html.escape(order.get('price', '—'))}"
             f" · 💳 {html.escape(order.get('prepay', '—'))}\n"
             + (f"📏 Razmer: {html.escape(order['size'])}\n" if order.get("size") else "")
-            + f"📞 {html.escape(order['phone'])}\n"
+            + f"📞 {html.escape(order['phone'])}"
+            + (f" · 👤 {html.escape(order['name'])}" if order.get("name") else "") + "\n"
         )
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
@@ -2472,14 +2669,16 @@ def main() -> None:
     )
 
     app.post_init = remember_bot_username
-    api.start(settings.API_PORT, lambda: BOT_USERNAME)
+    api.start(settings.API_PORT, site_hooks())
     log.info("Bot ishga tushmoqda...")
     app.run_polling()
 
 
 async def remember_bot_username(app: Application) -> None:
     """Deep link uchun bot username'ini aniqlab olamiz."""
-    global BOT_USERNAME
+    global BOT_USERNAME, APP, MAIN_LOOP
+    # Sayt API'si (boshqa oqim) xabar yuborishi uchun
+    APP, MAIN_LOOP = app, asyncio.get_running_loop()
     me = await app.bot.get_me()
     BOT_USERNAME = me.username
     log.info("Bot: @%s | tovarlar: %s", BOT_USERNAME, store.product_count())

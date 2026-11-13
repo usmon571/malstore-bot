@@ -1,81 +1,93 @@
-# MalStore — kirish sayti
+# MalStore — sayt
 
-`index.html` — bitta fayldan iborat landing sahifa (build kerak emas).
-Videodagi uslubda, scroll bilan boshqariladigan sahnalar:
+`index.html` — bitta fayldan iborat sayt (build kerak emas): landing sahna
+animatsiyalari, mahsulotlar katalogi va **saytning o'zida buyurtma berish**.
 
-1. **Globus** — Xitoydan Toshkentga yo'nalishlar; scroll'da ufqqa aylanadi
-2. **Biz haqimizda** — 100% original, 3 yetkazish turi, 2–7 kun
-3. **Ombor** — kran MALSTORE konteynerini mashinaga yuklaydi, mashina Toshkentga yo'l oladi
-4. **Xizmatlar** — aviapochta / avto kargo / avto pochta, Poizon tekshiruvi
-5. **Bosqichlar** — quti 5 bosqichdan o'tadi (tanlash → qo'lingizda)
-6. **Osmon** — bulutlar orasidan samolyot, "Siz uchun tinimsiz ishlaymiz"
-7. **Mahsulotlar** — botdagi tovarlar jonli ro'yxati (rasm, narx, variantlar, buyurtma)
-8. **Buyurtma** — Telegram kanal / bot tugmalari
+## Bitta baza
 
-Kutubxonalar CDN'dan: GSAP + ScrollTrigger (cdnjs), Lenis (unpkg), shrift — Google Fonts.
-Globus xaritasi faylning ichiga joylangan (tashqi so'rov yo'q).
-
-## Mahsulotlar qayerdan keladi
-
-Bot bilan bitta jarayonda kichik API ishlaydi (`../api.py`). U bot ishlatadigan
-saqlagichdan (Neon PostgreSQL yoki `store.json`) o'qiydi, shuning uchun bot
-kanalga tovar joylasa yoki `/ochirish` qilsa, saytda ~30 soniyada ko'rinadi.
+Sayt alohida bazaga ega emas. Bot bilan bitta jarayonda kichik server
+ishlaydi (`../api.py`) — u saytni ham tarqatadi, va botning **o'z**
+saqlagichidan (`store.json` yoki Neon PostgreSQL) o'qiydi va yozadi:
 
 ```
-sayt  ──GET /api/products──▶  bot servisi (Railway)  ──▶  baza
-      ◀── rasm ────────────   (Telegram'dan, token yashirin)
+             ┌──────────── bot jarayoni (bot.py) ────────────┐
+sayt ──HTTP──▶ api.py ──▶ store.py ──▶ store.json / Neon      │
+             │    │                       ▲                    │
+             │    └─ yangi buyurtma, chek ─┼─▶ Telegram: adminga│
+             │                       bot ──┘   (holat tugmalari)│
+             └───────────────────────────────────────────────┘
 ```
 
-Tashqariga faqat ommaviy ma'lumot chiqadi: nom, narxlar, xususiyatlar, rasmlar,
-buyurtma havolasi. Tannarx, Poizon havolasi va buyurtmalar berilmaydi.
+- Bot kanalga tovar joylasa yoki `/ochirish` qilsa — saytda ~30 soniyada ko'rinadi.
+- Saytdan buyurtma kelsa — adminga Telegram'da **🌐 Saytdan yangi buyurtma #N**
+  xabari keladi, bot buyurtmasi bilan bir xil holat tugmalari bilan.
+  `/buyurtmalar` ro'yxatida ham ko'rinadi (🌐 sayt belgisi bilan).
+- Admin holatni o'zgartirsa (to'lov tasdiqlandi, yo'lda, keldi...) — mijoz
+  uni saytdagi «Buyurtmalarim»da ko'radi.
 
-### Ishga tushirish (bir marta)
+## Buyurtma jarayoni (saytda)
 
-1. Railway → bot servisi → **Settings → Networking → Generate Domain**.
-   Railway `PORT`ni o'zi beradi, API shu portda ochiladi.
-2. Shu domenni `index.html` dagi `CONFIG.api` ga yozing:
-   ```js
-   const CONFIG = {
-     api: "https://malstore-bot-production.up.railway.app",
-     ...
-   ```
-3. (Ixtiyoriy) Railway Variables: `SITE_ORIGIN=https://usmon571.github.io` —
-   shunda API'ni faqat sizning saytingiz o'qiy oladi.
-4. Botda `/rasmlar` buyrug'ini bir marta yuboring — eski tovarlarning rasmlari
-   tiklanadi (avval rasmlar saqlanmagan edi). Yangi tovarlarda rasm o'zi saqlanadi.
+1. Mahsulot → variant (Avto kargo / Aviapochta / 50 ml ...) → **Buyurtma berish**.
+2. Razmer (atirdan boshqa hamma narsada; poyabzalda o'lchash qo'llanmasi bilan),
+   ism, telefon.
+3. Oldindan to'lov va karta raqami chiqadi — **botdagi qoida bilan aynan bir xil**
+   hisoblanadi (tannarx bo'lsa tannarx, bo'lmasa narxning `prepay_share` ulushi).
+4. Mijoz chek rasmini (yoki PDF) yuklaydi → adminga Telegram'da rasm bilan keladi.
+   Katta telefon rasmlari yuborishdan oldin brauzerda kichraytiriladi.
+5. «Telegram'da kuzatish» — buyurtmani mijozning Telegram'iga ulaydi: holat
+   xabarlari botdan ham keladi, chekni bot orqali ham yuborish mumkin.
 
-Tekshirish: `https://<domen>/api/products` brauzerda JSON qaytarishi kerak.
+Mijozning buyurtmalari brauzerida eslab qolinadi (sarlavhadagi «Buyurtmalarim»).
+Buyurtmani faqat egasi ko'radi — har biriga alohida kalit (token) beriladi.
 
-API sozlanmagan yoki ishlamay qolsa, bo'limda "Mahsulotlar kanalda" degan
-tugma chiqadi — sahifa buzilmaydi.
+## API
 
-## Sozlash
+| So'rov | Vazifasi |
+|---|---|
+| `GET /api/products` | tovarlar (tannarx va Poizon havolasi berilmaydi) |
+| `GET /api/products/101/images/0` | rasm — Telegram'dan, bot tokeni yashirin |
+| `POST /api/orders` | buyurtma: `{product_id, variant, size, name, phone}` |
+| `GET /api/orders/7?t=TOKEN` | buyurtma holati (faqat egasiga) |
+| `POST /api/orders/7/receipt?t=TOKEN` | chek (rasm yoki PDF, ≤10 MB) |
 
-`index.html` dagi `LINKS` obyekti — kanal havolasi. Bot havolasi API'dan
-avtomatik olinadi; API'siz ishlatsangiz `bot` ga yozing:
+Spamdan himoya: bitta IP 10 daqiqada 5 tadan ko'p buyurtma bera olmaydi,
+yashirin "robot tuzog'i" maydoni bor.
 
-```js
-const LINKS = {
-  channel: "https://t.me/malstoreoriginal",
-  bot: "",   // bo'sh qolsa — API'dan yoki kanal
-};
-```
+## Ishga tushirish
 
-## Local ko'rish
+Hech narsa sozlash shart emas: bot ishlaganda sayt ham ishlaydi —
+**http://localhost:8081** (shu kompyuterda). Port `config.json` dagi
+`"api_port"` bilan o'zgaradi, `0` — sayt o'chiq. Port band bo'lsa bot
+baribir ishlaydi, faqat sayt o'chiq qoladi (`bot.log` da yoziladi).
+
+Ishlab turgan botni yangi kodga o'tkazish — `update.bat` (config, baza
+va kutubxonalarga tegmaydi).
+
+Botda `/rasmlar` buyrug'ini bir marta yuboring — eski tovarlarning rasmlari
+saytga tiklanadi. Yangi tovarlarda rasm o'zi saqlanadi.
+
+## Internetga chiqarish
+
+Kompyuterdagi sayt tashqaridan ko'rinishi uchun unga ochiq HTTPS manzil
+kerak (uy kompyuterida ochiq IP bo'lmaydi). Bepul yo'llar: Cloudflare Tunnel
+yoki Tailscale Funnel — ular `http://localhost:8081` ni internetga chiqaradi.
+Sayt shu manzilda to'liq ishlaydi (API bilan bitta manzilda — qo'shimcha
+sozlama kerak emas).
+
+Saytni boshqa joyda (masalan GitHub Pages) saqlamoqchi bo'lsangiz,
+`index.html` dagi `CONFIG.api` ga bot manzilini yozing va
+`config.json` ga `"site_origin": "https://usmon571.github.io"` qo'shing.
+
+## Lokal sinov
+
+Sayt bot bilan bitta manzilda ochiladi (http://localhost:8081). Faqat
+dizayn ustida ishlash uchun alohida statik server ham bo'ladi:
 
 ```bash
 py -m http.server 8790 --directory site
 ```
 
-So'ng http://localhost:8790 ni oching. `localhost`da sayt API'ni
-`http://localhost:8081` dan qidiradi; boshqa manzil uchun:
-`http://localhost:8790/?api=https://<domen>`.
+U holda sayt botni `http://localhost:8081` dan qidiradi; boshqa manzil:
+`http://localhost:8790/?api=https://<manzil>`.
 
-API'ni kompyuterda yoqish: `API_PORT=8081` bilan botni ishga tushiring.
-⚠️ Railway'dagi bot ishlab turganda kompyuterda botni ishga tushirmang — bitta
-token bilan ikki bot polling qilsa Telegram xato beradi.
-
-## Joylash (GitHub Pages)
-
-Mini App `usmon571/malstore` repo'sining ildizida turadi, shuning uchun saytni
-alohida repo'ga (yoki shu repo'dagi `site/` papkaga) qo'ying va Pages'ni yoqing.
+⚠️ Bitta token bilan ikki bot ishlamasin — Telegram xato beradi.

@@ -10,9 +10,11 @@ kodi qaysi saqlagich ishlayotganini bilmaydi.
 """
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -41,6 +43,21 @@ if USE_DB:
     log.info("Saqlagich: PostgreSQL")
 else:
     log.info("Saqlagich: JSON fayl (%s)", STORE_FILE)
+
+
+# Bot va sayt API'si (api.py, alohida oqim) bitta saqlagichni ishlatadi.
+# JSON'da har bir amal "o'qi → o'zgartir → yoz" — ikkalasi bir vaqtda
+# yozsa, biri ikkinchisining o'zgarishini o'chirib yuborardi. Bazada esa
+# ulanish umumiy. Shuning uchun hamma amallar navbat bilan bajariladi.
+_lock = threading.RLock()
+
+
+def _locked(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _lock:
+            return fn(*args, **kwargs)
+    return wrapper
 
 
 def _empty() -> dict:
@@ -85,6 +102,7 @@ def _save(data: dict) -> None:
     tmp.replace(STORE_FILE)  # yozish yarmida uzilib qolmasligi uchun
 
 
+@_locked
 def next_product_id() -> str:
     if USE_DB:
         return db.next_product_id(DSN)
@@ -94,6 +112,7 @@ def next_product_id() -> str:
     return str(data["counter"])
 
 
+@_locked
 def save_product(
     product_id: str, url: str, title: str, prices: dict, arrival: str,
     caption: str = "", message_ids: list[int] | None = None,
@@ -123,12 +142,14 @@ def save_product(
     _save(data)
 
 
+@_locked
 def get_product(product_id: str) -> dict | None:
     if USE_DB:
         return db.get_product(DSN, product_id)
     return _load()["products"].get(str(product_id).strip().lstrip("#"))
 
 
+@_locked
 def update_product(product_id: str, **fields) -> dict | None:
     if USE_DB:
         return db.update_product(DSN, product_id, **fields)
@@ -141,6 +162,7 @@ def update_product(product_id: str, **fields) -> dict | None:
     return product
 
 
+@_locked
 def delete_product(product_id: str) -> dict | None:
     if USE_DB:
         return db.delete_product(DSN, product_id)
@@ -151,12 +173,14 @@ def delete_product(product_id: str) -> dict | None:
     return product
 
 
+@_locked
 def list_products(limit: int = 20) -> list[dict]:
     if USE_DB:
         return db.list_products(DSN, limit)
     return list(reversed(list(_load()["products"].values())))[:limit]
 
 
+@_locked
 def add_order(
     product_id: str, variant: str, user: dict, phone: str,
     price: str = "", prepay: str = "", size: str = "",
@@ -185,6 +209,7 @@ def add_order(
     return order_no
 
 
+@_locked
 def get_order(order_no: int) -> dict | None:
     if USE_DB:
         return db.get_order(DSN, order_no)
@@ -194,6 +219,7 @@ def get_order(order_no: int) -> dict | None:
     return None
 
 
+@_locked
 def set_order_status(order_no: int, status: str) -> dict | None:
     if USE_DB:
         return db.set_order_status(DSN, order_no, status)
@@ -206,6 +232,7 @@ def set_order_status(order_no: int, status: str) -> dict | None:
     return None
 
 
+@_locked
 def mark_paid(order_no: int, receipt_file_id: str) -> dict | None:
     if USE_DB:
         return db.mark_paid(DSN, order_no, receipt_file_id)
@@ -220,18 +247,37 @@ def mark_paid(order_no: int, receipt_file_id: str) -> dict | None:
     return None
 
 
+@_locked
+def link_order_user(order_no: int, user_id: int, username: str | None) -> dict | None:
+    """Saytdan berilgan buyurtmani mijozning Telegram'iga ulaydi — shunda
+    holat o'zgarganda xabar unga ham boradi."""
+    if USE_DB:
+        return db.link_order_user(DSN, order_no, user_id, username)
+    data = _load()
+    for order in data["orders"]:
+        if order["no"] == order_no:
+            order["user_id"] = user_id
+            order["username"] = username
+            _save(data)
+            return order
+    return None
+
+
+@_locked
 def recent_orders(limit: int = 15) -> list[dict]:
     if USE_DB:
         return db.recent_orders(DSN, limit)
     return list(reversed(_load()["orders"]))[:limit]
 
 
+@_locked
 def product_count() -> int:
     if USE_DB:
         return db.product_count(DSN)
     return len(_load()["products"])
 
 
+@_locked
 def remember_admin(user_id: int) -> None:
     if USE_DB:
         db.remember_admin(DSN, user_id)
@@ -244,6 +290,7 @@ def remember_admin(user_id: int) -> None:
         _save(data)
 
 
+@_locked
 def admin_ids() -> list[int]:
     if USE_DB:
         return db.admin_ids(DSN)

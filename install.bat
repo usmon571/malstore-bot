@@ -85,6 +85,7 @@ echo(
 echo  - Avtostart: kompyuter yonganda bot o'zi ishga tushadi.
 echo  - Yiqilsa o'zi qayta ko'tariladi.
 echo  - Kompyuter endi uxlamaydi - 24/7 ishlaydi.
+echo  - Sayt shu kompyuterda: http://localhost:8081
 echo  - Loglar:  "!APPDIR!bot.log"
 echo(
 echo  Botni HOZIR ishga tushiramanmi? Keyin Telegram'da tekshiring.
