@@ -13,7 +13,6 @@ from __future__ import annotations
 import functools
 import json
 import logging
-import os
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +25,8 @@ import settings
 STORE_FILE = settings.DATA_DIR / "store.json"
 FIRST_ID = 100
 
-DSN = os.getenv("DATABASE_URL", "").strip()
+# Environment variable yoki config.json'dagi "database_url"
+DSN = settings.DATABASE_URL
 USE_DB = bool(DSN)
 
 if USE_DB:
@@ -41,6 +41,16 @@ if USE_DB:
             "DATABASE_URL to'g'riligini va baza ishlayotganini tekshiring."
         ) from e
     log.info("Saqlagich: PostgreSQL")
+    # Fayldan bazaga o'tilganda u yerda qolgan tovarlar endi ko'rinmaydi
+    try:
+        leftover = len(json.loads(STORE_FILE.read_text(encoding="utf-8")).get("products", {}))
+    except Exception:
+        leftover = 0
+    if leftover:
+        log.warning(
+            "store.json'da %s ta tovar qoldi — ular bazada emas, bot va saytda "
+            "ko'rinmaydi. Ko'chirish: venv\\Scripts\\python migrate_to_db.py", leftover,
+        )
 else:
     log.info("Saqlagich: JSON fayl (%s)", STORE_FILE)
 

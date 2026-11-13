@@ -60,6 +60,9 @@ def get_list(name: str, env: str) -> list[str]:
 
 
 BOT_TOKEN = get("bot_token", "BOT_TOKEN", "")
+# Tovar va buyurtmalar bazasi (Neon PostgreSQL). Bo'sh bo'lsa — store.json fayl.
+# Bot va sayt shu bitta bazani ishlatadi.
+DATABASE_URL = str(get("database_url", "DATABASE_URL", "") or "").strip()
 CHANNEL = get("channel", "CHANNEL", "")
 ALLOWED_USERNAMES = get_list("allowed_usernames", "ALLOWED_USERNAMES")
 def _admin_ids() -> list[int]:

@@ -1,25 +1,24 @@
 r"""
 store.json dagi tovar va buyurtmalarni PostgreSQL (Neon) ga ko'chiradi.
 
-Ishga tushirish (PowerShell):
-    $env:DATABASE_URL="postgresql://...neon.tech/...?sslmode=require"
+Baza manzili config.json'dagi "database_url" (yoki DATABASE_URL) dan olinadi:
     .\venv\Scripts\python.exe migrate_to_db.py
 
 Bir necha marta ishga tushirsa ham xavfsiz: mavjud yozuvlar ustiga
 yozilmaydi, faqat yetishmayotganlari qo'shiladi.
 """
 import json
-import os
 import sys
-from pathlib import Path
 
-DSN = os.getenv("DATABASE_URL", "").strip()
+import settings
+
+DSN = settings.DATABASE_URL
 if not DSN:
-    sys.exit("DATABASE_URL berilmagan. Avval uni o'rnating.")
+    sys.exit("database_url berilmagan. Avval uni config.json ga yozing.")
 
 import db
 
-SOURCE = Path(__file__).parent / "store.json"
+SOURCE = settings.DATA_DIR / "store.json"
 if not SOURCE.exists():
     sys.exit(f"{SOURCE} topilmadi — ko'chiriladigan ma'lumot yo'q.")
 
@@ -34,13 +33,21 @@ print(f"Manbada: {len(products)} tovar, {len(orders)} buyurtma, {len(admins)} ad
 
 added_p = 0
 for pid, p in products.items():
-    if db.get_product(DSN, pid):
-        print(f"  tovar {pid} — allaqachon bor, o'tkazib yuborildi")
+    existing = db.get_product(DSN, pid)
+    if existing:
+        if existing.get("title") != p.get("title"):
+            # Fayl va baza alohida hisoblagan — bitta raqam ikki xil tovarda
+            print(f"  ⚠️ tovar {pid} — bazada BOSHQA tovar shu raqam bilan bor:\n"
+                  f"     baza: {existing.get('title', '')[:50]}\n"
+                  f"     fayl: {p.get('title', '')[:50]}\n"
+                  f"     faylidagisi ko'chirilmadi — uni botga qayta joylang.")
+        else:
+            print(f"  tovar {pid} — allaqachon bor, o'tkazib yuborildi")
         continue
     db.save_product(
         DSN, pid, p.get("url", ""), p.get("title", ""), p.get("prices", {}),
         p.get("arrival", ""), p.get("caption", ""), p.get("message_ids", []),
-        p.get("base_prices", {}),
+        p.get("base_prices", {}), p.get("images", []),
     )
     added_p += 1
 
@@ -77,4 +84,4 @@ if products:
 print(f"\nKo'chirildi: {added_p} tovar, {added_o} buyurtma, {len(admins)} admin")
 print(f"Bazada hozir: {db.product_count(DSN)} tovar, "
       f"{len(db.recent_orders(DSN, 1000))} buyurtma")
-print("\nTayyor. Endi DATABASE_URL ni Railway > Variables ga qo'shing.")
+print("\nTayyor. Botni qayta ishga tushiring — u endi bazani ishlatadi.")

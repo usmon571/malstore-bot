@@ -15,6 +15,8 @@
 
   "api_port": 8081,
 
+  "database_url": "",
+
   "brand_label": "Original",
   "max_images": 12,
   "cny_rate": 1761,
