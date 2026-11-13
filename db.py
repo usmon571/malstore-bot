@@ -211,7 +211,8 @@ def delete_product(dsn: str, product_id: str) -> dict | None:
     )
 
 
-def list_products(dsn: str, limit: int = 20) -> list[dict]:
+def list_products(dsn: str, limit: int | None = 20) -> list[dict]:
+    # limit=None → "LIMIT NULL", ya'ni PostgreSQL'da cheklovsiz
     return _exec(
         dsn, "SELECT * FROM products ORDER BY created DESC LIMIT %s", (limit,), fetch="all"
     )

@@ -174,7 +174,8 @@ def delete_product(product_id: str) -> dict | None:
 
 
 @_locked
-def list_products(limit: int = 20) -> list[dict]:
+def list_products(limit: int | None = 20) -> list[dict]:
+    """Eng yangisi birinchi. limit=None — hammasi."""
     if USE_DB:
         return db.list_products(DSN, limit)
     return list(reversed(list(_load()["products"].values())))[:limit]

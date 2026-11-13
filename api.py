@@ -8,7 +8,7 @@ kelsa — admin uni Telegram'da bot buyurtmasi bilan bir xil ko'radi.
 
     GET  /                               -> sayt (site/index.html)
     GET  /api/health                     -> {"ok": true}
-    GET  /api/products?limit=24          -> {"products": [...], "channel", "bot"}
+    GET  /api/products                   -> botdagi hamma tovar {"products": [...], "channel", "bot"}
     GET  /api/products/101               -> bitta tovar
     GET  /api/products/101/images/0      -> tovarning 1-rasmi (JPEG)
     POST /api/orders                     -> yangi buyurtma (JSON)
@@ -46,7 +46,6 @@ log = logging.getLogger("malstore-api")
 
 LIST_TTL = 30          # tovarlar ro'yxati shuncha soniya keshda turadi
 IMAGE_CACHE_SIZE = 150  # xotirada saqlanadigan rasmlar soni
-MAX_LIMIT = 60
 MAX_JSON_BODY = 8 * 1024
 MAX_RECEIPT = 10 * 1024 * 1024
 
@@ -70,7 +69,7 @@ RECEIPT_TYPES = {
 # Chek faqat to'lov bosqichidagi buyurtmaga qabul qilinadi
 RECEIPT_STATUSES = {"to'lov kutilmoqda", "chek yuborilgan"}
 
-_list_cache: dict = {"at": 0.0, "limit": 0, "items": []}
+_list_cache: dict = {"at": 0.0, "items": []}
 _images: "OrderedDict[str, bytes]" = OrderedDict()
 _images_lock = threading.Lock()
 
@@ -238,14 +237,15 @@ def public_order(order: dict, product: dict | None = None) -> dict:
     }
 
 
-def _load_products(limit: int) -> list[dict]:
+def _load_products() -> list[dict]:
+    """Botdagi hamma tovar (eng yangisi birinchi), qisqa vaqt keshda."""
     now = time.monotonic()
     cache = _list_cache
-    if now - cache["at"] < LIST_TTL and cache["limit"] >= limit:
-        return cache["items"][:limit]
-    items = store.list_products(MAX_LIMIT)
-    cache.update(at=now, limit=MAX_LIMIT, items=items)
-    return items[:limit]
+    if now - cache["at"] < LIST_TTL:
+        return cache["items"]
+    items = store.list_products(None)
+    cache.update(at=now, items=items)
+    return items
 
 
 # ---------- rasmlar (Telegram'dan, token yashirin) ----------
@@ -376,12 +376,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True})
 
         if path == "/api/products":
+            # Sukut bo'yicha hammasi; ?limit=N — faqat eng yangi N tasi
+            products = _load_products()
             try:
-                limit = max(1, min(MAX_LIMIT, int(qs.get("limit", ["24"])[0])))
+                limit = int(qs["limit"][0]) if "limit" in qs else None
             except ValueError:
-                limit = 24
+                limit = None
+            if limit and limit > 0:
+                products = products[:limit]
             base = self._base_url()
-            items = [public_product(p, base) for p in _load_products(limit)]
+            items = [public_product(p, base) for p in products]
             bot = _hooks.bot_username()
             return self._json(200, {
                 "products": items,

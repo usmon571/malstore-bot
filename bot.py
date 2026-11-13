@@ -1954,7 +1954,7 @@ async def backfill_images_command(update: Update, context: ContextTypes.DEFAULT_
 
     chat_id = update.effective_chat.id
     products = [
-        p for p in store.list_products(500)
+        p for p in store.list_products(None)
         if not p.get("images") and p.get("message_ids")
     ]
     if not products:

@@ -1462,7 +1462,7 @@ if (!window.gsap || !window.ScrollTrigger) {
     // Sayt boshqa joyda (masalan GitHub Pages) tursa — botdagi API manzili.
     // Bo'sh qolsa, sayt bot bilan bitta manzilda turibdi deb hisoblanadi.
     api: "",
-    pageSize: 8,
+    pageSize: 12,
   };
   const qsApi = new URLSearchParams(location.search).get("api");
   const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -1512,7 +1512,7 @@ if (!window.gsap || !window.ScrollTrigger) {
       const candidates = fixed ? [fixed] : [sameOrigin, local ? "http://localhost:8081" : ""];
       for (const c of [...new Set(candidates)].filter(Boolean)) {
         API = c.replace(/\/$/, "");
-        const r = await call("/api/products?limit=60", {}, 12000);
+        const r = await call("/api/products", {}, 20000);
         if (r.ok && Array.isArray(r.data.products)) return r;
       }
       API = "";
@@ -1604,6 +1604,7 @@ if (!window.gsap || !window.ScrollTrigger) {
     if (shown === 0) grid.replaceChildren(...next); else grid.append(...next);
     shown += next.length;
     more.hidden = shown >= items.length;
+    more.textContent = `Yana ko’rsatish · ${items.length - shown} ta qoldi`;
     refresh();
     // Inline transform qolsa :hover ko'tarilishi ishlamaydi — oxirida tozalaymiz
     if (window.gsap) gsap.fromTo(next, { opacity: 0, y: 40 }, {
