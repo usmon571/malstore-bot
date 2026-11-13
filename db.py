@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS products (
     arrival     TEXT DEFAULT '',
     caption     TEXT DEFAULT '',
     message_ids JSONB DEFAULT '[]'::jsonb,
+    images      JSONB DEFAULT '[]'::jsonb,
     created     TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS orders (
@@ -118,6 +119,12 @@ def init(dsn: str) -> None:
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS "
         "base_prices JSONB DEFAULT '{}'::jsonb",
     )
+    # Kanal postidagi rasmlarning Telegram file_id'lari — sayt shu orqali ko'rsatadi
+    _exec(
+        dsn,
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS "
+        "images JSONB DEFAULT '[]'::jsonb",
+    )
     _exec(
         dsn,
         "INSERT INTO counters (name, value) VALUES ('product', %s) "
@@ -148,22 +155,23 @@ def next_product_id(dsn: str) -> str:
 
 def save_product(
     dsn: str, product_id, url, title, prices, arrival, caption, message_ids,
-    base_prices=None,
+    base_prices=None, images=None,
 ) -> None:
     _exec(
         dsn,
         """INSERT INTO products
              (id, url, title, prices, base_prices, arrival, caption,
-              message_ids, created)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+              message_ids, images, created)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
            ON CONFLICT (id) DO UPDATE SET
              url=EXCLUDED.url, title=EXCLUDED.title, prices=EXCLUDED.prices,
              base_prices=EXCLUDED.base_prices,
              arrival=EXCLUDED.arrival, caption=EXCLUDED.caption,
-             message_ids=EXCLUDED.message_ids""",
+             message_ids=EXCLUDED.message_ids, images=EXCLUDED.images""",
         (product_id, url, title, json.dumps(prices, ensure_ascii=False),
          json.dumps(base_prices or {}, ensure_ascii=False), arrival,
-         caption, json.dumps(message_ids or [], ensure_ascii=False), _now()),
+         caption, json.dumps(message_ids or [], ensure_ascii=False),
+         json.dumps(images or [], ensure_ascii=False), _now()),
     )
 
 
@@ -176,6 +184,7 @@ def get_product(dsn: str, product_id: str) -> dict | None:
 def update_product(dsn: str, product_id: str, **fields) -> dict | None:
     allowed = {
         "url", "title", "prices", "base_prices", "arrival", "caption", "message_ids",
+        "images",
     }
     sets, values = [], []
     for key, value in fields.items():
@@ -184,7 +193,7 @@ def update_product(dsn: str, product_id: str, **fields) -> dict | None:
         sets.append(f"{key} = %s")
         values.append(
             json.dumps(value, ensure_ascii=False)
-            if key in ("prices", "base_prices", "message_ids") else value
+            if key in ("prices", "base_prices", "message_ids", "images") else value
         )
     if not sets:
         return get_product(dsn, product_id)

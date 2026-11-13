@@ -92,6 +92,15 @@ BRAND_LABEL = get("brand_label", "BRAND_LABEL", "Original")
 MAX_IMAGES = int(get("max_images", "MAX_IMAGES", 12))
 WEBAPP_URL = str(get("webapp_url", "WEBAPP_URL", "")).rstrip("#")
 
+# Sayt API'si (api.py). Railway PORT'ni o'zi beradi; kompyuterda API_PORT
+# yoki config.json'dagi "api_port" bilan yoqiladi. 0 — o'chiq.
+API_PORT = int(os.getenv("PORT") or get("api_port", "API_PORT", 0) or 0)
+# Rasm havolalari uchun tashqi manzil (bo'sh bo'lsa so'rovdagi Host olinadi)
+API_PUBLIC_URL = str(get("api_public_url", "API_PUBLIC_URL", "")).rstrip("/")
+# Faqat shu sayt API'dan o'qiy olsin (masalan https://usmon571.github.io).
+# Bo'sh — hamma joydan (ma'lumot baribir ommaviy).
+SITE_ORIGIN = str(get("site_origin", "SITE_ORIGIN", ""))
+
 PREPAY_SHARE = float(get("prepay_share", "PREPAY_SHARE", 0.5))
 CARD_NUMBER = str(get("card_number", "CARD_NUMBER", ""))
 CARD_HOLDER = str(get("card_holder", "CARD_HOLDER", ""))

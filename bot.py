@@ -45,6 +45,7 @@ from telegram.ext import (
     filters,
 )
 
+import api
 import settings
 import store
 from scraper import extract_poizon_url, fetch_product
@@ -685,6 +686,12 @@ async def send_product_post(
         result = await send_media_group(media)
         sent.extend(result if isinstance(result, (list, tuple)) else [result])
     return sent
+
+
+def photo_ids(messages) -> list[str]:
+    """Kanalga yuborilgan rasmlarning file_id'lari (eng katta o'lchami) —
+    sayt rasmlarni shu orqali Telegram'dan oladi."""
+    return [m.photo[-1].file_id for m in messages if m and getattr(m, "photo", None)]
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1677,6 +1684,7 @@ async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 arrival=context.user_data.get("arrival", ""),
                 caption=caption,
                 message_ids=[m.message_id for m in sent if m],
+                images=photo_ids(sent),
             )
         await query.edit_message_text(
             f"✅ Kanalga yuborildi: {CHANNEL} ({len(images)} ta rasm)\n"
@@ -1726,10 +1734,67 @@ async def products_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"{PREPAY_SHARE:.0%} olinadi va tannarxni qoplamasligi mumkin.\n"
             "Tuzatish: /tannarx 101\n"
         )
+    no_images = sum(1 for p in products if not p.get("images") and p.get("message_ids"))
+    if no_images:
+        lines.append(f"🖼 {no_images} ta tovar rasmi saytda yo'q — tiklash: /rasmlar\n")
     lines.append("O'chirish: /ochirish 101")
     lines.append("Matnni tahrirlash: /tahrirlash 101")
     lines.append("Tannarx kiritish: /tannarx 101")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def backfill_images_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/rasmlar — sayt uchun eski tovarlarning rasm file_id'larini tiklaydi.
+
+    Rasmlar avval saqlanmagan — ular faqat kanal postida bor. Bot kanal
+    xabarini o'qiy olmaydi, lekin uni forward qilganda qaytgan xabarda rasm
+    bo'ladi. Shuning uchun har bir postni shu chatga ovozsiz forward qilib,
+    file_id'ni olamiz va nusxani darhol o'chiramiz.
+    """
+    if not is_allowed(update):
+        await deny(update)
+        return
+
+    chat_id = update.effective_chat.id
+    products = [
+        p for p in store.list_products(500)
+        if not p.get("images") and p.get("message_ids")
+    ]
+    if not products:
+        await update.message.reply_text("✅ Hamma tovarning rasmlari saqlangan.")
+        return
+
+    status = await update.message.reply_text(f"🖼 {len(products)} ta tovar tekshirilmoqda...")
+    fixed, missing = 0, []
+    for product in products:
+        ids: list[str] = []
+        for message_id in product["message_ids"]:
+            try:
+                copy = await context.bot.forward_message(
+                    chat_id=chat_id, from_chat_id=CHANNEL,
+                    message_id=message_id, disable_notification=True,
+                )
+            except Exception as e:
+                log.warning("post %s forward qilinmadi: %s", message_id, e)
+                continue
+            ids += photo_ids([copy])
+            try:
+                await copy.delete()
+            except Exception:
+                pass
+        if ids:
+            store.update_product(product["id"], images=ids)
+            fixed += 1
+        else:
+            missing.append(product["id"])
+
+    text = f"✅ {fixed} ta tovarning rasmlari tiklandi — endi saytda ko'rinadi."
+    if missing:
+        text += (
+            f"\n⚠️ Rasm topilmadi: {', '.join(missing)} "
+            "(post kanaldan o'chirilgan yoki rasmsiz)."
+        )
+    await status.edit_text(text)
 
 
 async def delete_product_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2378,6 +2443,7 @@ def main() -> None:
 
     app.add_handler(CommandHandler("buyurtmalar", orders_command))
     app.add_handler(CommandHandler("tovarlar", products_command))
+    app.add_handler(CommandHandler("rasmlar", backfill_images_command))
     app.add_handler(CommandHandler("ochirish", delete_product_command))
     app.add_handler(CallbackQueryHandler(handle_status_change, pattern=r"^st:"))
     app.add_handler(CallbackQueryHandler(handle_delete_confirm, pattern=r"^del:"))
@@ -2406,6 +2472,7 @@ def main() -> None:
     )
 
     app.post_init = remember_bot_username
+    api.start(settings.API_PORT, lambda: BOT_USERNAME)
     log.info("Bot ishga tushmoqda...")
     app.run_polling()
 

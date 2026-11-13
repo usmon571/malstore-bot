@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MalStore — Xitoydan to’g’ri sizga</title>
+<meta name="description" content="Poizon (得物) dan 100% original mahsulotlar. Xitoydan Toshkentgacha — aviapochta, avto kargo va avto pochta orqali.">
+<meta name="theme-color" content="#060B1A">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 20V14a12 12 0 0 1 24 0v6' fill='none' stroke='%2335B96C' stroke-width='5.5' stroke-linecap='round'/%3E%3Crect x='8' y='19' width='48' height='38' rx='10' fill='%2335B96C'/%3E%3Cpath d='M20 47V33l12 10 12-10v14' fill='none' stroke='%2312244F' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* MalStore logosi: to'q ko'k (navy) + yashil */
+  :root{
+    --navy:#12244F;
+    --navy-deep:#0D1B3D;
+    --ink:#060B1A;
+    --green:#35B96C;
+    --green-glow:#6BF0A0;
+    --paper:#F5F7FB;
+    --text:#0B1530;
+    --muted:#6B7C99;
+    --line:#DCE4EF;
+    --sky-top:#0B3FD9;
+    --display:"Archivo", "Arial Black", system-ui, sans-serif;
+    --body:"Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --gutter:clamp(16px, 4vw, 56px);
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  html.lenis, html.lenis body{height:auto}
+  .lenis.lenis-smooth{scroll-behavior:auto !important}
+  body{
+    margin:0; background:var(--ink); color:var(--text);
+    font:16px/1.55 var(--body); -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  body.loading{overflow:hidden}
+  a{color:inherit}
+  img,svg,canvas{display:block}
+  .display{
+    font-family:var(--display); font-weight:800; font-stretch:115%;
+    text-transform:uppercase; letter-spacing:-.01em; line-height:.92; margin:0;
+  }
+  .eyebrow{
+    font:600 11.5px/1 var(--display); font-stretch:110%;
+    letter-spacing:.18em; text-transform:uppercase;
+  }
+
+  /* ---------- Preloader ---------- */
+  .preloader{
+    position:fixed; inset:0; z-index:100; background:var(--ink);
+    display:grid; place-items:center; color:#fff;
+  }
+  .preloader .pl-inner{display:flex; flex-direction:column; align-items:center; gap:18px}
+  .preloader svg{width:72px; height:72px}
+  .preloader .pl-path{stroke-dasharray:var(--len); stroke-dashoffset:var(--len)}
+  .preloader .pl-name{font:800 20px/1 var(--display); font-stretch:120%; letter-spacing:.2em}
+  .preloader .pl-name span{color:var(--green)}
+  .preloader .pl-count{
+    position:absolute; right:var(--gutter); bottom:var(--gutter);
+    font:800 clamp(48px, 9vw, 120px)/1 var(--display); font-stretch:120%;
+    color:rgba(255,255,255,.08); font-variant-numeric:tabular-nums;
+  }
+
+  /* ---------- Header ---------- */
+  .hdr{
+    position:fixed; top:0; left:0; right:0; z-index:50;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:20px var(--gutter); pointer-events:none; color:#fff;
+    transition:color .35s ease;
+  }
+  .hdr.light{color:var(--text)}
+  .hdr > *{pointer-events:auto}
+  .brand{display:flex; align-items:center; gap:10px; text-decoration:none}
+  .brand svg{width:30px; height:30px}
+  .brand-name{font:800 15px/1 var(--display); font-stretch:120%; letter-spacing:.16em}
+  .brand-name span{color:var(--green)}
+  .hdr nav{display:flex; flex-direction:column; gap:6px; margin-top:16px}
+  .hdr nav a{
+    font:600 11px/1 var(--display); font-stretch:110%; letter-spacing:.16em;
+    text-transform:uppercase; text-decoration:none; opacity:.7; transition:opacity .2s;
+  }
+  .hdr nav a:hover{opacity:1}
+  .hdr nav{transition:opacity .35s ease, transform .35s ease}
+  .hdr.compact nav{opacity:0; transform:translateY(-6px); pointer-events:none}
+  .handle{
+    display:flex; align-items:center; gap:8px; text-decoration:none;
+    font:700 11px/1 var(--display); font-stretch:110%; letter-spacing:.14em;
+  }
+  .handle svg{width:22px; height:22px}
+
+  /* ---------- Buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; gap:10px;
+    padding:13px 20px; border-radius:999px; text-decoration:none;
+    font:700 12px/1 var(--display); font-stretch:110%; letter-spacing:.14em; text-transform:uppercase;
+    transition:transform .2s ease, background .2s ease, box-shadow .2s ease;
+  }
+  .btn:hover{transform:translateY(-2px)}
+  .btn-green{background:var(--green); color:#04140B; box-shadow:0 8px 30px rgba(53,185,108,.35)}
+  .btn-green:hover{box-shadow:0 12px 40px rgba(53,185,108,.5)}
+  .btn-ghost{border:1.5px solid currentColor; opacity:.85}
+  .btn svg{width:16px; height:16px}
+
+  /* ---------- Line reveal ---------- */
+  .ln{display:block; overflow:hidden; padding-bottom:.06em; margin-bottom:-.06em}
+  .ln > span{display:block; will-change:transform}
+  .scramble .sl{display:block; white-space:nowrap}
+
+  /* ---------- 1. Hero ---------- */
+  .hero{position:relative; height:100vh; height:100svh; overflow:hidden; background:var(--ink); color:#fff}
+  .hero canvas{position:absolute; inset:0; width:100%; height:100%}
+  .hero-content{
+    position:absolute; left:var(--gutter); top:50%; transform:translateY(-42%);
+    max-width:min(860px, 92vw); z-index:2;
+  }
+  .hero .eyebrow{color:var(--green-glow); display:flex; align-items:center; gap:10px; margin-bottom:22px}
+  .hero .eyebrow i{width:28px; height:1.5px; background:currentColor; display:block}
+  .hero h1{font-size:clamp(46px, 8.4vw, 132px)}
+  .hero p{max-width:440px; color:rgba(255,255,255,.72); font-size:15px; margin:26px 0 30px}
+  .hero-actions{display:flex; gap:12px; flex-wrap:wrap}
+  .hero-foot{
+    position:absolute; left:var(--gutter); right:var(--gutter); bottom:26px; z-index:2;
+    display:flex; justify-content:space-between; align-items:flex-end;
+    color:rgba(255,255,255,.55);
+  }
+  .scroll-hint{display:flex; align-items:center; gap:12px}
+  .scroll-hint .bar{width:1.5px; height:38px; background:rgba(255,255,255,.18); position:relative; overflow:hidden}
+  .scroll-hint .bar::after{
+    content:""; position:absolute; left:0; top:-40%; width:100%; height:40%;
+    background:var(--green-glow); animation:drip 1.8s ease-in-out infinite;
+  }
+  @keyframes drip{to{top:110%}}
+  .coords{text-align:right}
+
+  /* ---------- 2. Intro / stats ---------- */
+  .intro{
+    position:relative; background:var(--paper); padding:clamp(90px, 14vh, 160px) var(--gutter) clamp(40px, 8vh, 90px);
+    display:grid; grid-template-columns:1.25fr 1fr; gap:48px; align-items:end;
+  }
+  .intro h2{font-size:clamp(36px, 6vw, 96px)}
+  .intro h2 .soft{color:#AAB5C8}
+  .stats{display:grid; gap:0}
+  .stat{display:grid; grid-template-columns:auto 1fr; align-items:baseline; gap:20px; padding:22px 0; border-top:1px solid var(--line)}
+  .stat .num{font:800 clamp(44px, 5.4vw, 80px)/1 var(--display); font-stretch:115%; color:var(--text); font-variant-numeric:tabular-nums; min-width:2.6em}
+  .stat .num small{font-size:.38em; color:var(--green); margin-left:4px}
+  .stat p{margin:0; color:var(--muted); font-size:14px; max-width:260px}
+
+  /* ---------- 3. Yard (crane + truck) ---------- */
+  .yard{position:relative; height:100vh; height:100svh; overflow:hidden; background:var(--paper)}
+  .yard-copy{position:absolute; left:var(--gutter); top:clamp(110px, 20vh, 190px); max-width:420px; z-index:2}
+  .yard-copy .eyebrow{color:var(--green)}
+  .yard-copy p{color:var(--muted); margin:14px 0 0; font-size:15px}
+  .yard-stage{position:absolute; left:0; right:0; bottom:6vh; height:min(68vh, 46vw); will-change:transform}
+  .yard-stage svg{width:100%; height:100%}
+  .yard-panel{
+    position:absolute; left:0; right:0; top:0; height:100%; background:var(--ink); color:#fff;
+    z-index:3; will-change:transform; padding:clamp(40px, 7vh, 80px) var(--gutter) 0;
+    display:grid; grid-template-columns:1fr auto; align-items:start; gap:32px;
+  }
+  .yard-panel h2{font-size:clamp(32px, 5vw, 84px); margin-left:auto; text-align:right; grid-column:1/-1}
+  .yard-panel .panel-foot{grid-column:1/-1; display:flex; justify-content:flex-end; align-items:center; gap:24px; color:rgba(255,255,255,.6); font-size:14px; flex-wrap:wrap}
+  .yard-panel .panel-foot p{margin:0; max-width:380px; text-align:right}
+
+  /* ---------- 4. Services ---------- */
+  .services{background:var(--ink); color:#fff; padding:clamp(30px, 6vh, 70px) var(--gutter) clamp(90px, 14vh, 150px)}
+  .svc-grid{display:grid; grid-template-columns:repeat(6, 1fr); gap:0; border-top:1px solid rgba(255,255,255,.12)}
+  .svc{padding:28px 22px 10px 0; border-right:1px solid rgba(255,255,255,.08); margin-right:22px}
+  .svc:last-child{border-right:none; margin-right:0}
+  .svc svg{width:30px; height:30px; color:var(--green-glow); margin-bottom:22px}
+  .svc h3{font:800 14px/1.15 var(--display); font-stretch:115%; letter-spacing:.06em; text-transform:uppercase; margin:0 0 10px}
+  .svc .days{font:800 26px/1 var(--display); font-stretch:115%; color:var(--green-glow); margin:0 0 10px}
+  .svc p{margin:0; color:rgba(255,255,255,.58); font-size:13.5px}
+  .svc-note{color:rgba(255,255,255,.38); font-size:12.5px; margin-top:34px}
+
+  /* ---------- 5. Milestones ---------- */
+  .ms{position:relative; height:100vh; height:100svh; overflow:hidden; background:#fff}
+  .ms-title{position:absolute; left:var(--gutter); top:50%; transform:translateY(-50%); font-size:clamp(40px, 6.2vw, 110px); z-index:1}
+  .ms-title .soft{color:#AAB5C8}
+  .ms-strip{
+    position:absolute; top:0; bottom:0; left:61%; width:clamp(96px, 11vw, 180px);
+    transform:translateX(-50%); background:var(--ink); z-index:2; overflow:hidden;
+  }
+  .ms-track{position:absolute; left:50%; top:8%; bottom:8%; width:1.5px; background:rgba(255,255,255,.1); transform:translateX(-50%)}
+  .ms-fill{position:absolute; left:0; top:0; width:100%; height:0; background:var(--green-glow); box-shadow:0 0 12px var(--green-glow)}
+  .ms-tick{position:absolute; left:50%; width:9px; height:9px; border-radius:50%; background:#1B2540; transform:translate(-50%,-50%); transition:background .3s, box-shadow .3s}
+  .ms-tick.on{background:var(--green-glow); box-shadow:0 0 14px var(--green-glow)}
+  .ms-box{position:absolute; left:50%; top:8%; width:clamp(56px, 7vw, 96px); transform:translate(-50%,-50%); filter:drop-shadow(0 12px 22px rgba(0,0,0,.5))}
+  .ms-card{
+    position:absolute; right:var(--gutter); top:50%; transform:translateY(-50%);
+    width:min(320px, 24vw); z-index:3;
+  }
+  .ms-card .eyebrow{color:var(--green)}
+  .ms-num{font:800 clamp(56px, 7vw, 104px)/1 var(--display); font-stretch:115%; color:var(--text); margin:14px 0 6px; font-variant-numeric:tabular-nums}
+  .ms-card h3{font:800 22px/1.1 var(--display); font-stretch:115%; text-transform:uppercase; margin:0 0 10px; letter-spacing:.02em}
+  .ms-card p{margin:0; color:var(--muted); font-size:15px; min-height:4.8em}
+  .ms-dots{display:flex; gap:6px; margin-top:22px}
+  .ms-dots i{width:22px; height:3px; border-radius:2px; background:var(--line); transition:background .3s}
+  .ms-dots i.on{background:var(--green)}
+
+  /* ---------- 6. Sky ---------- */
+  .sky{
+    position:relative; height:100vh; height:100svh; overflow:hidden; color:#fff;
+    background:linear-gradient(180deg, var(--sky-top) 0%, #1F5CF0 45%, #5C93FF 80%, #A9C9FF 100%);
+  }
+  .cloud-layer{position:absolute; left:-10%; width:120%; top:0; height:260%; pointer-events:none; will-change:transform}
+  .puff{position:absolute; border-radius:50%; background:radial-gradient(circle at 50% 45%, #fff 0%, rgba(255,255,255,.92) 35%, rgba(255,255,255,0) 70%)}
+  .plane{position:absolute; left:0; top:0; width:clamp(160px, 22vw, 340px); z-index:4; will-change:transform; filter:drop-shadow(18px 30px 18px rgba(4,20,80,.35))}
+  .sky-head{
+    position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); z-index:5; text-align:center;
+    font-size:clamp(40px, 7.6vw, 128px); padding:0 var(--gutter);
+    text-shadow:0 2px 6px rgba(6,30,120,.35), 0 6px 50px rgba(6,30,120,.55);
+  }
+  .sky-card{
+    position:absolute; z-index:6; max-width:260px; padding:18px 20px; border-radius:16px;
+    background:rgba(8,30,110,.28); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.22);
+  }
+  .sky-card .eyebrow{color:var(--green-glow)}
+  .sky-card b{display:block; font:800 30px/1 var(--display); font-stretch:115%; margin:10px 0 8px}
+  .sky-card p{margin:0; font-size:13.5px; color:rgba(255,255,255,.82)}
+  .sky-card.l{left:var(--gutter); top:16vh}
+  .sky-card.r{right:var(--gutter); bottom:12vh}
+  .cloud-cover{
+    position:absolute; inset:-20%; z-index:8; pointer-events:none; opacity:0;
+    background:radial-gradient(ellipse at 50% 60%, #fff 0%, #fff 28%, rgba(255,255,255,.85) 45%, rgba(255,255,255,0) 72%);
+  }
+  .white-out{position:absolute; inset:0; z-index:9; background:#fff; opacity:0; pointer-events:none}
+
+  /* ---------- 6b. Mahsulotlar (bot API'sidan) ---------- */
+  .products{background:#fff; padding:clamp(80px, 12vh, 140px) var(--gutter) clamp(20px, 4vh, 40px)}
+  .pr-head{display:flex; justify-content:space-between; align-items:flex-end; gap:24px; flex-wrap:wrap; margin-bottom:clamp(28px, 5vh, 48px)}
+  .pr-head .eyebrow{color:var(--green); display:flex; align-items:center; gap:8px; margin-bottom:18px}
+  .live{width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 0 0 rgba(53,185,108,.6); animation:live 2s infinite}
+  @keyframes live{70%{box-shadow:0 0 0 8px rgba(53,185,108,0)}100%{box-shadow:0 0 0 0 rgba(53,185,108,0)}}
+  .pr-head h2{font-size:clamp(40px, 7vw, 112px)}
+  .pr-head h2 .soft{color:#AAB5C8}
+  .pr-meta{display:flex; flex-direction:column; align-items:flex-end; gap:12px; color:var(--muted); font-size:14px}
+  .pr-meta .btn-ghost{color:var(--text)}
+  .pr-grid{display:grid; grid-template-columns:repeat(4, 1fr); gap:clamp(12px, 1.6vw, 22px)}
+  .card{
+    display:flex; flex-direction:column; background:var(--paper); border-radius:18px; overflow:hidden;
+    cursor:pointer; text-align:left; border:1px solid transparent; padding:0; font:inherit; color:inherit;
+    transition:transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s, border-color .35s;
+  }
+  .card:hover{transform:translateY(-6px); box-shadow:0 22px 50px rgba(18,36,79,.12); border-color:var(--line)}
+  .card:focus-visible{outline:2px solid var(--green); outline-offset:3px}
+  .card-media{position:relative; aspect-ratio:1/1; background:#EEF2F8; overflow:hidden}
+  .card-media img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; padding:8%; transition:opacity .5s, transform .6s}
+  .card-media img.alt{opacity:0}
+  .card:hover .card-media.two img.alt{opacity:1}
+  .card:hover .card-media.two img:not(.alt){opacity:0}
+  .card:hover .card-media:not(.two) img{transform:scale(1.05)}
+  .card-media .ph{position:absolute; inset:0; display:grid; place-items:center}
+  .card-media .ph svg, .pm-main .ph svg{width:30%; opacity:.18}
+  .pm-main .ph{position:absolute; inset:0; display:grid; place-items:center}
+  .tag{position:absolute; top:12px; left:12px; padding:6px 9px; border-radius:999px; background:#fff; font:800 10.5px/1 var(--display); font-stretch:110%; letter-spacing:.12em; color:var(--text)}
+  .tag.g{left:auto; right:12px; background:var(--navy); color:var(--green-glow)}
+  .card-body{display:flex; flex-direction:column; gap:12px; padding:16px 16px 18px; flex:1; width:100%}
+  .card-title{margin:0; font:600 14.5px/1.4 var(--body); color:var(--text); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .card-foot{margin-top:auto; display:flex; justify-content:space-between; align-items:flex-end; gap:10px}
+  .price{font:800 19px/1.1 var(--display); font-stretch:110%; color:var(--text); white-space:nowrap}
+  .price small{display:block; font:600 11px/1.3 var(--body); color:var(--muted); margin-bottom:3px}
+  .card-go{flex:0 0 auto; width:38px; height:38px; border-radius:50%; display:grid; place-items:center; background:var(--green); color:#04140B; transition:transform .3s}
+  .card:hover .card-go{transform:rotate(-45deg)}
+  .card-go svg{width:16px; height:16px}
+  .skel .card-media, .skel .sk{background:linear-gradient(90deg, #EEF2F8 0%, #F7F9FC 50%, #EEF2F8 100%); background-size:200% 100%; animation:shim 1.3s infinite linear}
+  .skel{cursor:default}
+  .skel:hover{transform:none; box-shadow:none; border-color:transparent}
+  .sk{height:12px; border-radius:6px}
+  @keyframes shim{to{background-position:-200% 0}}
+  .pr-more{display:flex; justify-content:center; margin-top:32px}
+  .pr-more .btn-ghost{color:var(--text); background:none; cursor:pointer}
+  .pr-more [hidden]{display:none}
+  .pr-empty{grid-column:1/-1; padding:48px 24px; border-radius:18px; background:var(--paper); text-align:center; color:var(--muted)}
+  .pr-empty b{display:block; font:800 22px/1.2 var(--display); font-stretch:110%; color:var(--text); text-transform:uppercase; margin-bottom:8px}
+  .pr-empty .btn{margin-top:20px}
+
+  /* Mahsulot oynasi */
+  .pm{border:none; padding:0; width:min(980px, calc(100vw - 24px)); max-height:calc(100vh - 24px); border-radius:24px; background:#fff; color:var(--text); overflow:hidden}
+  .pm::backdrop{background:rgba(6,11,26,.6); backdrop-filter:blur(6px)}
+  .pm[open]{display:grid; grid-template-columns:1.05fr 1fr; animation:pmIn .45s cubic-bezier(.2,.8,.2,1)}
+  @keyframes pmIn{from{opacity:0; transform:translateY(24px) scale(.98)}}
+  .pm-gal{background:#EEF2F8; display:flex; flex-direction:column; min-height:0}
+  .pm-main{position:relative; flex:1; min-height:300px; aspect-ratio:1/1}
+  .pm-main img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; padding:7%}
+  .pm-thumbs{display:flex; gap:8px; padding:0 14px 14px; overflow-x:auto}
+  .pm-thumbs:empty{display:none}
+  .pm-thumbs button{flex:0 0 56px; height:56px; border-radius:10px; border:2px solid transparent; background:#fff; padding:4px; cursor:pointer}
+  .pm-thumbs button.on{border-color:var(--green)}
+  .pm-thumbs img{width:100%; height:100%; object-fit:contain}
+  .pm-info{padding:clamp(22px, 3vw, 36px); overflow-y:auto; display:flex; flex-direction:column; gap:18px; max-height:calc(100vh - 24px)}
+  .pm-info .eyebrow{color:var(--green)}
+  .pm-info h3{margin:0; font:700 clamp(17px, 1.8vw, 21px)/1.4 var(--body); padding-right:36px}
+  .pm-vars{display:grid; gap:8px}
+  .pm-var{display:flex; justify-content:space-between; gap:12px; padding:12px 14px; border-radius:12px; background:var(--paper)}
+  .pm-var span{color:var(--muted); font-weight:600}
+  .pm-var b{font:800 16px/1.2 var(--display); font-stretch:110%}
+  .pm-specs{margin:0; display:grid; grid-template-columns:auto 1fr; gap:8px 16px; font-size:14px}
+  .pm-specs:empty{display:none}
+  .pm-specs dt{color:var(--muted)}
+  .pm-specs dd{margin:0; font-weight:600}
+  .pm-note{font-size:13px; color:var(--muted); margin:0}
+  .pm-actions{display:flex; gap:10px; flex-wrap:wrap; margin-top:auto}
+  .pm-actions .btn-ghost{color:var(--text)}
+  .pm-actions [hidden]{display:none}
+  .pm-close{position:absolute; top:12px; right:12px; z-index:2; width:40px; height:40px; border-radius:50%; border:none; background:#fff; color:var(--text); cursor:pointer; display:grid; place-items:center; box-shadow:0 4px 14px rgba(0,0,0,.08)}
+  .pm-close svg{width:16px; height:16px}
+
+  /* ---------- 7. CTA ---------- */
+  .cta{background:#fff; padding:clamp(70px, 10vh, 120px) var(--gutter) clamp(80px, 12vh, 140px); position:relative}
+  .cta h2{font-size:clamp(46px, 9vw, 150px)}
+  .cta h2 .g{color:var(--green)}
+  .cta-row{display:flex; justify-content:space-between; align-items:flex-end; gap:32px; flex-wrap:wrap; margin-top:40px}
+  .cta-row p{max-width:420px; color:var(--muted); margin:0}
+  .cta .btn-ghost{color:var(--text)}
+  .cta-actions{display:flex; gap:12px; flex-wrap:wrap}
+
+  footer{background:var(--navy-deep); color:rgba(255,255,255,.6); padding:40px var(--gutter); display:flex; justify-content:space-between; align-items:center; gap:20px; flex-wrap:wrap; font-size:13px}
+  footer .brand{color:#fff}
+  footer a{text-decoration:none}
+  footer a:hover{color:#fff}
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 900px){
+    .hdr nav{display:none}
+    .handle span{display:none}
+    .hero-content{top:auto; bottom:18vh; transform:none}
+    .hero p{font-size:14px; margin:18px 0 22px}
+    .coords{display:none}
+    .intro{grid-template-columns:1fr; gap:30px}
+    .svc-grid{grid-template-columns:repeat(2, 1fr)}
+    .svc{margin-right:0; padding:24px 16px 18px 0; border-right:none; border-bottom:1px solid rgba(255,255,255,.08)}
+    .yard-stage{left:-3vw; right:-17vw; height:auto; aspect-ratio:1600/720; bottom:30vh}
+    .yard-copy p{font-size:16px}
+    .yard-panel{padding-top:28px}
+    .yard-panel h2{text-align:left; margin-left:0}
+    .yard-panel .panel-foot{justify-content:flex-start}
+    .yard-panel .panel-foot p{text-align:left}
+    .ms-title{top:13vh; transform:none; font-size:clamp(28px, 8.2vw, 56px)}
+    .ms-strip{left:auto; right:var(--gutter); transform:none; width:84px}
+    .ms-card{right:auto; left:var(--gutter); top:auto; bottom:9vh; transform:none; width:calc(100% - 84px - var(--gutter)*3)}
+    .ms-card h3{font-size:18px}
+    .ms-card p{font-size:14px}
+    .sky-card{max-width:200px; padding:14px 16px}
+    .sky-card b{font-size:24px}
+    .sky-card.l{top:12vh}
+    .sky-card.r{bottom:8vh}
+  }
+  @media (max-width: 1100px){ .pr-grid{grid-template-columns:repeat(3, 1fr)} }
+  @media (max-width: 900px){
+    .pr-grid{grid-template-columns:repeat(2, 1fr)}
+    .pr-meta{align-items:flex-start}
+    .pm[open]{grid-template-columns:1fr; overflow-y:auto}
+    .pm-main{min-height:0}
+    .pm-info{max-height:none}
+  }
+  @media (max-width: 520px){
+    .svc-grid{grid-template-columns:1fr}
+    .card-body{padding:12px 12px 14px; gap:10px}
+    .card-title{font-size:13px}
+    .price{font-size:15px}
+    .card-go{width:32px; height:32px}
+    .tag.g{display:none}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .scroll-hint .bar::after{animation:none}
+  }
+  /* GSAP yuklanmasa — sahifa oddiy holda ko'rinadi */
+  .no-gsap .preloader{display:none}
+  .no-gsap .yard-panel{position:relative; height:auto; padding-bottom:40px}
+  .no-gsap .yard{height:auto; min-height:100vh; padding-bottom:0}
+  .no-gsap .yard-stage{position:relative; bottom:auto; margin-top:30vh}
+</style>
+</head>
+<body class="loading">
+
+<!-- ================= PRELOADER ================= -->
+<div class="preloader" id="preloader" aria-hidden="true">
+  <div class="pl-inner">
+    <svg viewBox="0 0 64 64">
+      <path class="pl-path" d="M20 20V14a12 12 0 0 1 24 0v6" fill="none" stroke="#35B96C" stroke-width="4" stroke-linecap="round"/>
+      <rect class="pl-path" x="8" y="19" width="48" height="38" rx="10" fill="none" stroke="#35B96C" stroke-width="4"/>
+      <path class="pl-path" d="M20 47V33l12 10 12-10v14" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="pl-name">MAL <span>STORE</span></div>
+  </div>
+  <div class="pl-count" id="plCount">0</div>
+</div>
+
+<!-- ================= HEADER ================= -->
+<header class="hdr" id="hdr">
+  <div>
+    <a class="brand" href="#top" aria-label="MalStore">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M20 20V14a12 12 0 0 1 24 0v6" fill="none" stroke="#35B96C" stroke-width="5.5" stroke-linecap="round"/>
+        <rect x="8" y="19" width="48" height="38" rx="10" fill="#35B96C"/>
+        <circle cx="20" cy="27" r="2.6" fill="#12244F"/>
+        <circle cx="44" cy="27" r="2.6" fill="#12244F"/>
+        <path d="M20 47V33l12 10 12-10v14" fill="none" stroke="#12244F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-name">MAL <span>STORE</span></span>
+    </a>
+    <nav aria-label="Bo'limlar">
+      <a href="#about">Biz haqimizda</a>
+      <a href="#services">Yetkazish</a>
+      <a href="#steps">Qanday ishlaydi</a>
+      <a href="#products">Mahsulotlar</a>
+      <a href="#order">Buyurtma</a>
+    </nav>
+  </div>
+  <a class="handle" data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 4.3 18.7 19.4c-.2 1-.9 1.3-1.7.8l-4.7-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.8 8.8-7.9c.4-.3-.1-.5-.6-.2L6.6 13.3 2 11.9c-1-.3-1-1 .2-1.5l17.9-6.9c.8-.3 1.6.2 1.3 1.6z"/></svg>
+    <span>@MALSTOREORIGINAL</span>
+  </a>
+</header>
+
+<main id="top">
+
+<!-- ================= 1. HERO ================= -->
+<section class="hero" id="hero" data-theme="dark">
+  <canvas id="globe" aria-hidden="true"></canvas>
+  <div class="hero-content" id="heroContent"><div id="heroInner">
+    <div class="eyebrow"><i></i>100% Original · Poizon 得物</div>
+    <h1 class="display">
+      <span class="ln"><span>Xitoydan</span></span>
+      <span class="ln"><span>to’g’ri</span></span>
+      <span class="ln"><span>sizga.</span></span>
+    </h1>
+    <p class="hero-p">Kiyim, poyabzal va parfyumeriya — Poizon’ning rasmiy tekshiruvidan o’tgan, original qutisi va hujjatlari bilan. Xitoy omboridan Toshkentgacha.</p>
+    <div class="hero-actions">
+      <a class="btn btn-green" data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">
+        Kanalga o’tish
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+      </a>
+      <a class="btn btn-ghost" href="#steps">Qanday ishlaydi</a>
+    </div>
+  </div></div>
+  <div class="hero-foot">
+    <div class="scroll-hint eyebrow"><span class="bar"></span>Pastga aylantiring</div>
+    <div class="coords eyebrow">41.31° N · 69.24° E<br><span style="color:var(--green-glow)">Toshkent</span></div>
+  </div>
+</section>
+
+<!-- ================= 2. INTRO ================= -->
+<section class="intro" id="about" data-theme="light">
+  <h2 class="display reveal">
+    <span class="ln soft"><span>Biz shunchaki</span></span>
+    <span class="ln soft"><span>tovar</span></span>
+    <span class="ln soft"><span>keltirmaymiz.</span></span>
+    <span class="ln"><span>Biz originalni</span></span>
+    <span class="ln"><span>kafolatlaymiz.</span></span>
+  </h2>
+  <div class="stats">
+    <div class="stat"><div class="num"><span class="count" data-to="100">100</span><small>%</small></div><p>Original. Har bir mahsulot Poizon (得物) rasmiy tekshiruvidan o’tadi.</p></div>
+    <div class="stat"><div class="num"><span class="count" data-to="3">3</span></div><p>Yetkazish turi — aviapochta, avto kargo va avto pochta.</p></div>
+    <div class="stat"><div class="num">2–7<small>kun</small></div><p>Aviapochta bilan yo’lda — Xitoy omboridan Toshkentgacha.</p></div>
+  </div>
+</section>
+
+<!-- ================= 3. YARD ================= -->
+<section class="yard" id="yard" data-theme="light">
+  <div class="yard-copy" id="yardCopy">
+    <div class="eyebrow">Ombordan — yo’lga</div>
+    <p>Buyurtmangiz Xitoydagi omborda qadoqlanadi va eng yaqin reysga yuklanadi.</p>
+  </div>
+
+  <div class="yard-stage" id="yardStage">
+    <svg viewBox="0 0 1600 720" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs>
+        <pattern id="corr" width="12" height="10" patternUnits="userSpaceOnUse">
+          <rect width="6" height="10" fill="rgba(255,255,255,.07)"/>
+          <rect x="6" width="1.2" height="10" fill="rgba(0,0,0,.18)"/>
+        </pattern>
+        <pattern id="truss" width="28" height="32" patternUnits="userSpaceOnUse">
+          <path d="M0 32 L14 0 L28 32" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>
+        </pattern>
+        <g id="c20">
+          <rect width="150" height="100" rx="2" fill="currentColor"/>
+          <rect width="150" height="100" fill="url(#corr)"/>
+          <rect width="150" height="6" fill="rgba(0,0,0,.22)"/>
+          <rect y="94" width="150" height="6" fill="rgba(0,0,0,.22)"/>
+          <rect width="6" height="100" fill="rgba(0,0,0,.18)"/>
+          <rect x="144" width="6" height="100" fill="rgba(0,0,0,.18)"/>
+        </g>
+        <g id="wheel">
+          <circle r="28" fill="#0B1220"/>
+          <circle r="15" fill="#9AA6BA"/>
+          <circle r="5" fill="#0B1220"/>
+          <path d="M0-13V13M-11.3-6.5 11.3 6.5M-11.3 6.5 11.3-6.5" stroke="#0B1220" stroke-width="2.4"/>
+        </g>
+      </defs>
+
+      <g id="world">
+        <!-- uzoqdagi tog'lar (Tyan-Shan) — kamera o'ngga surilganda ko'rinadi -->
+        <path d="M1500 620 L1640 520 L1720 560 L1830 450 L1930 540 L2010 500 L2140 400 L2260 520 L2340 480 L2460 560 L2600 470 L2760 620 Z" fill="#E6EBF3"/>
+        <path d="M1830 450 L1862 478 L1845 474 L1830 488 L1815 472 L1800 478 Z M2140 400 L2178 436 L2158 430 L2140 446 L2122 430 L2104 436 Z" fill="#fff"/>
+        <!-- yo'l belgisi -->
+        <g transform="translate(2280 470)">
+          <rect x="-3" y="0" width="6" height="150" fill="#9AA6BA"/>
+          <rect x="-90" y="-10" width="180" height="56" rx="6" fill="#2A9D58"/>
+          <rect x="-84" y="-4" width="168" height="44" rx="4" fill="none" stroke="#fff" stroke-width="2"/>
+          <text x="-6" y="27" text-anchor="middle" fill="#fff" font-family="Archivo, sans-serif" font-weight="800" font-size="22" letter-spacing="2">TOSHKENT</text>
+          <path d="M66 18 h12 M72 12 l6 6 -6 6" stroke="#fff" stroke-width="3" fill="none"/>
+        </g>
+        <!-- uzoqdagi konteynerlar -->
+        <g opacity=".22">
+          <use href="#c20" x="1390" y="520" style="color:#8DA0C0"/>
+          <use href="#c20" x="1390" y="420" style="color:#B9C6DA"/>
+          <use href="#c20" x="-180" y="520" style="color:#8DA0C0"/>
+        </g>
+
+        <!-- kran oyoqlari va to'sini -->
+        <g id="crane">
+          <rect x="0" y="80" width="1340" height="34" fill="#12244F"/>
+          <rect x="0" y="82" width="1340" height="30" fill="url(#truss)"/>
+          <rect x="0" y="80" width="1340" height="5" fill="#35B96C"/>
+          <rect x="0" y="80" width="38" height="520" fill="#35B96C"/>
+          <rect x="6" y="80" width="26" height="520" fill="url(#truss)" opacity=".6"/>
+          <rect x="1302" y="80" width="38" height="520" fill="#35B96C"/>
+          <rect x="1308" y="80" width="26" height="520" fill="url(#truss)" opacity=".6"/>
+          <rect x="-14" y="596" width="66" height="16" rx="3" fill="#12244F"/>
+          <rect x="1288" y="596" width="66" height="16" rx="3" fill="#12244F"/>
+          <circle cx="2" cy="614" r="6" fill="#0B1220"/><circle cx="36" cy="614" r="6" fill="#0B1220"/>
+          <circle cx="1304" cy="614" r="6" fill="#0B1220"/><circle cx="1338" cy="614" r="6" fill="#0B1220"/>
+          <!-- operator kabinasi -->
+          <rect x="1230" y="114" width="64" height="52" rx="4" fill="#12244F"/>
+          <rect x="1238" y="122" width="48" height="24" rx="2" fill="#7FB3FF" opacity=".75"/>
+        </g>
+
+        <!-- konteynerlar to'plami -->
+        <use href="#c20" x="60" y="520" style="color:#12244F"/>
+        <use href="#c20" x="220" y="520" style="color:#3E6FE0"/>
+        <use href="#c20" x="60" y="420" style="color:#C9D3E3"/>
+        <use href="#c20" x="220" y="420" style="color:#12244F"/>
+        <use href="#c20" x="400" y="520" style="color:#C9D3E3"/>
+
+        <!-- yuk mashinasi -->
+        <g id="truck">
+          <rect x="0" y="540" width="545" height="14" fill="#0B1220"/>
+          <rect x="0" y="520" width="380" height="20" fill="#1B2A4A"/>
+          <rect x="370" y="528" width="40" height="12" fill="#1B2A4A"/>
+          <path d="M405 540 V472 Q405 455 422 455 H492 Q506 455 514 468 L536 504 Q542 514 542 526 V540 Z" fill="#F2F4F8"/>
+          <path d="M475 466 H496 Q502 466 506 473 L522 500 H475 Z" fill="#12244F" opacity=".88"/>
+          <rect x="405" y="508" width="137" height="8" fill="#35B96C"/>
+          <rect x="420" y="468" width="44" height="34" rx="3" fill="none" stroke="#C9D3E3" stroke-width="2"/>
+          <rect x="532" y="526" width="16" height="22" rx="3" fill="#0B1220"/>
+          <rect x="536" y="512" width="8" height="8" rx="2" fill="#FFD66B"/>
+          <rect x="440" y="542" width="56" height="16" rx="4" fill="#9AA6BA"/>
+          <rect x="398" y="420" width="7" height="60" rx="3" fill="#9AA6BA"/>
+          <use href="#wheel" class="wh" x="60" y="592"/>
+          <use href="#wheel" class="wh" x="122" y="592"/>
+          <use href="#wheel" class="wh" x="428" y="592"/>
+          <use href="#wheel" class="wh" x="506" y="592"/>
+        </g>
+
+        <!-- asosiy konteyner (40ft) -->
+        <g id="box40">
+          <rect width="310" height="100" rx="2" fill="#35B96C"/>
+          <rect width="310" height="100" fill="url(#corr)"/>
+          <rect width="310" height="6" fill="rgba(0,0,0,.2)"/>
+          <rect y="94" width="310" height="6" fill="rgba(0,0,0,.2)"/>
+          <rect width="7" height="100" fill="rgba(0,0,0,.16)"/>
+          <rect x="303" width="7" height="100" fill="rgba(0,0,0,.16)"/>
+          <g transform="translate(26 30) scale(.62)">
+            <path d="M20 20V14a12 12 0 0 1 24 0v6" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round"/>
+            <rect x="8" y="19" width="48" height="38" rx="10" fill="#fff"/>
+            <path d="M20 47V33l12 10 12-10v14" fill="none" stroke="#35B96C" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+          <text x="76" y="58" fill="#fff" font-family="Archivo, sans-serif" font-weight="800" font-size="30" letter-spacing="4">MALSTORE</text>
+          <text x="78" y="78" fill="rgba(255,255,255,.75)" font-family="Archivo, sans-serif" font-weight="700" font-size="11" letter-spacing="3">100% ORIGINAL · 得物</text>
+        </g>
+
+        <!-- trolley, arqonlar, spreader -->
+        <line id="cableL" x1="0" y1="140" x2="0" y2="200" stroke="#0B1220" stroke-width="2"/>
+        <line id="cableR" x1="0" y1="140" x2="0" y2="200" stroke="#0B1220" stroke-width="2"/>
+        <g id="trolley">
+          <rect x="-52" y="112" width="104" height="30" rx="3" fill="#0B1220"/>
+          <rect x="-52" y="126" width="104" height="4" fill="#35B96C"/>
+          <circle cx="-34" cy="112" r="5" fill="#35B96C"/><circle cx="34" cy="112" r="5" fill="#35B96C"/>
+        </g>
+        <g id="spreader">
+          <rect x="-166" y="0" width="332" height="14" rx="2" fill="#0B1220"/>
+          <rect x="-166" y="4" width="332" height="3" fill="#35B96C"/>
+          <rect x="-160" y="14" width="10" height="4" fill="#0B1220"/><rect x="150" y="14" width="10" height="4" fill="#0B1220"/>
+        </g>
+
+        <!-- yer -->
+        <rect x="-400" y="620" width="3400" height="3" fill="#12244F"/>
+        <g fill="#C9D3E3"><rect x="620" y="634" width="60" height="3"/><rect x="760" y="634" width="60" height="3"/><rect x="900" y="634" width="60" height="3"/><rect x="1040" y="634" width="60" height="3"/><rect x="1180" y="634" width="60" height="3"/></g>
+      </g>
+    </svg>
+  </div>
+
+  <div class="yard-panel" id="yardPanel">
+    <h2 class="display scramble" id="yardHead">
+      <span class="sl">Tovaringizga</span>
+      <span class="sl">kerak bo’lgan</span>
+      <span class="sl">hammasi.</span>
+      <span class="sl" style="color:var(--green-glow)">Bir joyda.</span>
+    </h2>
+    <div class="panel-foot">
+      <p>Tanlashdan tortib qo’lingizga topshirishgacha — buyurtmaning har bir bosqichi bizning nazoratimizda.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4. SERVICES ================= -->
+<section class="services" id="services" data-theme="dark">
+  <div class="svc-grid">
+    <div class="svc reveal-up">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 19l24-9-3 4-8 3 2 9-3 1-4-8-6 2-2 3-2-1 2-4z"/></svg>
+      <h3>Aviapochta</h3><div class="days">2–7 kun</div>
+      <p>Eng tez yo’l. Shoshilinch buyurtmalar uchun.</p>
+    </div>
+    <div class="svc reveal-up">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="2" y="9" width="18" height="13" rx="1"/><path d="M20 13h5l4 5v4h-9z"/><circle cx="8" cy="24" r="2.5"/><circle cx="24" cy="24" r="2.5"/></svg>
+      <h3>Avto kargo</h3><div class="days">10–20 kun</div>
+      <p>Narx va tezlik o’rtasidagi optimal tanlov.</p>
+    </div>
+    <div class="svc reveal-up">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 10l12-6 12 6v12l-12 6-12-6z"/><path d="M4 10l12 6 12-6M16 16v12M10 7l12 6"/></svg>
+      <h3>Avto pochta</h3><div class="days">15–25 kun</div>
+      <p>Tejamkor variant — og’ir va katta tovarlar uchun.</p>
+    </div>
+    <div class="svc reveal-up">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z"/><path d="M11 16l4 4 7-8"/></svg>
+      <h3>Poizon tekshiruvi</h3><div class="days">得物</div>
+      <p>Mahsulot original ekani rasman tasdiqlanadi.</p>
+    </div>
+    <div class="svc reveal-up">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="11" width="24" height="17" rx="1"/><path d="M2 6h28v5H2zM16 6v22M12 2c2 0 4 4 4 4s-6 0-6-2 1-2 2-2zM20 2c-2 0-4 4-4 4s6 0 6-2-1-2-2-2z"/></svg>
+      <h3>Original quti</h3><div class="days">100%</div>
+      <p>Quti, birka va hujjatlari bilan birga keladi.</p>
+    </div>
+    <div class="svc reveal-up">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M29 5L3 15l8 3 3 9 4-6 7 5z"/><path d="M11 18l14-11"/></svg>
+      <h3>Telegram orqali</h3><div class="days">24/7</div>
+      <p>Buyurtma, to’lov cheki va savollar — bot orqali.</p>
+    </div>
+  </div>
+  <div class="svc-note">* Yo’ldagi kunlar tovar Xitoy omborida qadoqlangandan keyin hisoblanadi va reys jadvaliga bog’liq.</div>
+</section>
+
+<!-- ================= 5. MILESTONES ================= -->
+<section class="ms" id="steps" data-theme="light">
+  <h2 class="display ms-title" id="msTitle">
+    <span class="ln"><span>Har bir</span></span>
+    <span class="ln"><span>bosqichda</span></span>
+    <span class="ln soft"><span>ishonch.</span></span>
+  </h2>
+
+  <div class="ms-strip" id="msStrip">
+    <div class="ms-track"><div class="ms-fill" id="msFill"></div></div>
+    <div id="msTicks"></div>
+    <svg class="ms-box" id="msBox" viewBox="0 0 120 120" aria-hidden="true">
+      <path d="M60 12 L108 36 L60 60 L12 36 Z" fill="#D9B98A"/>
+      <path d="M12 36 L60 60 L60 112 L12 88 Z" fill="#C49A62"/>
+      <path d="M108 36 L60 60 L60 112 L108 88 Z" fill="#AE824B"/>
+      <path d="M36 24 L84 48 L84 56 L36 32 Z" fill="#35B96C"/>
+      <path d="M84 48 L84 100 L76 104 L76 52 Z" fill="#2A9D58"/>
+      <g transform="translate(22 64) skewY(26.6) scale(.42)"><rect x="8" y="19" width="48" height="38" rx="10" fill="#12244F" opacity=".8"/><path d="M20 47V33l12 10 12-10v14" fill="none" stroke="#D9B98A" stroke-width="6" stroke-linecap="round"/></g>
+    </svg>
+  </div>
+
+  <div class="ms-card" id="msCard">
+    <div class="eyebrow">Qanday ishlaydi</div>
+    <div class="ms-num" id="msNum">01</div>
+    <h3 id="msH">Tanlang</h3>
+    <p id="msP">@malstoreoriginal kanalidan mahsulot tanlang va post ostidagi «Buyurtma berish» havolasini bosing.</p>
+    <div class="ms-dots" id="msDots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+  </div>
+</section>
+
+<!-- ================= 6. SKY ================= -->
+<section class="sky" id="sky" data-theme="dark">
+  <div class="cloud-layer" data-depth="0.45"></div>
+  <svg class="plane" id="plane" viewBox="0 0 200 200" aria-hidden="true">
+    <defs>
+      <linearGradient id="fus" x1="0" x2="1"><stop offset="0" stop-color="#E3E9F3"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="#C9D3E3"/></linearGradient>
+    </defs>
+    <path d="M100 118 L14 136 L14 142 L100 132 Z M100 118 L186 136 L186 142 L100 132 Z" fill="#DCE4EF"/>
+    <path d="M98 92 L12 128 L12 138 L98 116 Z M102 92 L188 128 L188 138 L102 116 Z" fill="#fff"/>
+    <rect x="44" y="110" width="11" height="24" rx="5" fill="#C9D3E3"/>
+    <rect x="145" y="110" width="11" height="24" rx="5" fill="#C9D3E3"/>
+    <path d="M100 8 C108 8 112 24 112 40 L112 160 C112 174 106 190 100 194 C94 190 88 174 88 160 L88 40 C88 24 92 8 100 8 Z" fill="url(#fus)"/>
+    <path d="M92 166 L66 182 L66 188 L94 182 Z M108 166 L134 182 L134 188 L106 182 Z" fill="#fff"/>
+    <rect x="98" y="160" width="4" height="32" rx="2" fill="#35B96C"/>
+    <path d="M94 26 Q100 18 106 26 L106 30 L94 30 Z" fill="#12244F" opacity=".8"/>
+  </svg>
+  <div class="cloud-layer" data-depth="1"></div>
+
+  <h2 class="display sky-head scramble" id="skyHead">
+    <span class="sl">Siz uchun</span>
+    <span class="sl">tinimsiz</span>
+    <span class="sl">ishlaymiz.</span>
+  </h2>
+  <div class="sky-card l" id="skyCardL">
+    <div class="eyebrow">Aviapochta</div>
+    <b>2–7 kun</b>
+    <p>Qadoqlangandan keyin Xitoydan Toshkentgacha havo yo’li bilan.</p>
+  </div>
+  <div class="sky-card r" id="skyCardR">
+    <div class="eyebrow">Shaffof to’lov</div>
+    <b>Oldindan — faqat tovar</b>
+    <p>Oldindan mahsulotning o’z narxini to’laysiz. Yetkazish va xizmat haqi — tovar kelganda.</p>
+  </div>
+  <div class="cloud-cover" id="cloudCover"></div>
+  <div class="white-out" id="whiteOut"></div>
+</section>
+
+<!-- ================= 6b. MAHSULOTLAR (bot API'sidan) ================= -->
+<section class="products" id="products" data-theme="light">
+  <div class="pr-head">
+    <div>
+      <div class="eyebrow"><span class="live"></span>Kanaldan · jonli</div>
+      <h2 class="display reveal">
+        <span class="ln"><span>Yangi</span></span>
+        <span class="ln soft"><span>mahsulotlar.</span></span>
+      </h2>
+    </div>
+    <div class="pr-meta">
+      <span id="prCount">Yuklanmoqda…</span>
+      <a class="btn btn-ghost" data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">Kanalda hammasi</a>
+    </div>
+  </div>
+  <div class="pr-grid" id="prGrid" aria-live="polite"></div>
+  <div class="pr-more"><button class="btn btn-ghost" id="prMore" type="button" hidden>Yana ko’rsatish</button></div>
+</section>
+
+<dialog class="pm" id="pm" data-lenis-prevent aria-label="Mahsulot">
+  <button class="pm-close" id="pmClose" type="button" aria-label="Yopish">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
+  </button>
+  <div class="pm-gal">
+    <div class="pm-main" id="pmMain"></div>
+    <div class="pm-thumbs" id="pmThumbs"></div>
+  </div>
+  <div class="pm-info">
+    <div class="eyebrow" id="pmId"></div>
+    <h3 id="pmTitle"></h3>
+    <div class="pm-vars" id="pmVars"></div>
+    <dl class="pm-specs" id="pmSpecs"></dl>
+    <p class="pm-note">Oldindan faqat mahsulot narxi to’lanadi. Yetkazish va xizmat haqi — tovar kelganda.</p>
+    <div class="pm-actions">
+      <a class="btn btn-green" id="pmOrder" target="_blank" rel="noopener">Buyurtma berish
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+      <a class="btn btn-ghost" id="pmPost" target="_blank" rel="noopener">Kanalda ko’rish</a>
+    </div>
+  </div>
+</dialog>
+
+<!-- ================= 7. CTA ================= -->
+<section class="cta" id="order" data-theme="light">
+  <div class="eyebrow" style="color:var(--green); margin-bottom:22px">Buyurtma berish</div>
+  <h2 class="display reveal">
+    <span class="ln"><span>Originalga</span></span>
+    <span class="ln"><span>bir <span class="g">qadam.</span></span></span>
+  </h2>
+  <div class="cta-row">
+    <p>Kanalimizga qo’shiling, mahsulotni tanlang va bot orqali buyurtma bering. Savollaringiz bo’lsa — botga yozing, operator javob beradi.</p>
+    <div class="cta-actions">
+      <a class="btn btn-green" data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">
+        Telegram kanal
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
+      </a>
+      <a class="btn btn-ghost" data-link="bot" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">Botga yozish</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <a class="brand" href="#top">
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M20 20V14a12 12 0 0 1 24 0v6" fill="none" stroke="#35B96C" stroke-width="5.5" stroke-linecap="round"/>
+      <rect x="8" y="19" width="48" height="38" rx="10" fill="#35B96C"/>
+      <path d="M20 47V33l12 10 12-10v14" fill="none" stroke="#12244F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span class="brand-name">MAL <span>STORE</span></span>
+  </a>
+  <span>© <span id="year">2026</span> MalStore · 100% Original</span>
+  <a data-link="channel" href="https://t.me/malstoreoriginal" target="_blank" rel="noopener">@malstoreoriginal</a>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lenis@1.1.20/dist/lenis.min.js"></script>
+<script>
+/* ------------------------------------------------------------------
+   Havolalar — bot username'i ma'lum bo'lsa BOT ga yozing
+   (masalan "https://t.me/malstore_bot"). Bo'sh qolsa kanal ochiladi.
+------------------------------------------------------------------- */
+const LINKS = {
+  channel: "https://t.me/malstoreoriginal",
+  bot: "",
+};
+document.querySelectorAll("[data-link]").forEach(a => {
+  a.href = LINKS[a.dataset.link] || LINKS.channel;
+});
+document.getElementById("year").textContent = new Date().getFullYear();
+
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+/* ==================================================================
+   GLOBUS — quruqlik nuqtalari (world-atlas 110m dan oldindan hisoblangan)
+   Har qator: [kenglik, qatordagi nuqtalar soni, quruqlikdagi indekslar]
+================================================================== */
+const DOTS = [[-58.5,125,[]],[-57.0,131,[]],[-55.5,136,[]],[-54.0,141,[42,43]],[-52.5,146,[43,44]],[-51.0,151,[44,45,46]],[-49.5,156,[45,46,47,48,108]],[-48.0,161,[47,48,49,50]],[-46.5,165,[48,49,50,51]],[-45.0,170,[50,51,52,53,164,165]],[-43.5,174,[52,53,54,169,170]],[-42.0,178,[52,53,54,55,56,161,174]],[-40.5,182,[54,55,56,57,58,59]],[-39.0,187,[55,56,57,58,59,60,169,184,185]],[-37.5,190,[56,57,58,59,60,61,62,63,64,169,170,171,172,173,187]],[-36.0,194,[58,59,60,61,62,63,64,65,172,173,174,175,176,177]],[-34.5,198,[59,60,61,62,63,64,65,66,68,163,173,175,176,177,178,179,180,181]],[-33.0,201,[61,62,63,64,65,66,67,68,69,70,111,112,113,114,115,165,166,167,168,169,175,176,177,178,179,180,181,182,183,184]],[-31.5,205,[62,63,64,65,66,67,68,69,70,71,72,113,114,115,116,117,118,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189]],[-30.0,208,[63,64,65,66,67,68,69,70,71,72,73,74,114,115,116,117,118,119,120,121,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192]],[-28.5,211,[64,65,66,67,68,69,70,71,72,73,74,75,76,115,116,117,118,119,120,121,122,123,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194]],[-27.0,214,[65,66,67,68,69,70,71,72,73,74,75,76,77,116,117,118,119,120,121,122,123,124,125,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197]],[-25.5,217,[66,67,68,69,70,71,72,73,74,75,76,77,78,117,118,119,120,121,122,123,124,125,126,127,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200]],[-24.0,219,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,118,119,120,121,122,123,124,125,126,127,128,129,130,136,137,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201]],[-22.5,222,[68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,120,121,122,123,124,125,126,127,128,129,130,131,132,138,139,140,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203]],[-21.0,224,[68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,120,121,122,123,124,125,126,127,128,129,130,131,132,133,139,140,141,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,214]],[-19.5,226,[69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,121,122,123,124,125,126,127,128,129,130,131,132,133,134,141,142,143,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205]],[-18.0,228,[69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,142,143,144,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,226]],[-16.5,230,[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,140,141,142,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,203,204,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228]],[-15.0,232,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,146,147,197,198,199,200,201,202,207,208,209,223]],[-13.5,233,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,148,201,202,203,204,208]],[-12.0,235,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,204,206,210]],[-10.5,236,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,216]],[-9.0,237,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,195,201,211,212,215,224]],[-7.5,238,[66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,190,191,192,193,210,211,212,213,214,215]],[-6.0,239,[66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,190,211,212,213,214,215,216,218,219,222]],[-4.5,239,[66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,188,189,200,209,210,211,212,213,214,215,220]],[-3.0,240,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,188,189,190,194,195,196,197,199,201,205,206,208,209,210,211,212,213,214]],[-1.5,240,[66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,187,188,189,193,194,195,196,197,200,201,208]],[0.0,240,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,186,187,188,193,194,195,196,197]],[1.5,240,[67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,186,187,193,194,195,196,197,198,205]],[3.0,240,[68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,185,186,188,195,196,197]],[4.5,239,[68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,114,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,183,184,186,187,195,196,197]],[6.0,239,[68,69,70,71,72,73,74,75,76,77,78,79,80,81,112,113,114,115,116,117,118,119,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,186,187,197,202]],[7.5,238,[65,67,68,69,70,71,72,73,74,75,76,77,78,79,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,172,200,201,202]],[9.0,237,[63,65,66,68,69,70,71,72,73,74,75,76,77,78,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,169,171,183,201]],[10.5,236,[62,69,70,71,72,73,74,76,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,168,169,186,187]],[12.0,235,[61,62,70,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,167,168,169,182,185,186,187,188]],[13.5,233,[58,59,60,61,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,165,166,167,180,181,182,183,184,185,186,196]],[15.0,232,[56,57,58,59,60,61,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,144,145,146,147,148,164,165,166,167,179,180,181,182,183,184,185,193]],[16.5,230,[52,53,54,55,56,57,58,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,142,143,144,145,146,147,148,162,163,164,165,166,175,176,177,178,179,180,181,182,183,192]],[18.0,228,[49,50,51,52,53,54,55,56,57,65,71,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,140,141,142,143,144,145,146,147,148,149,160,161,162,163,164,165,166,174,175,176,177,178,179,180,190]],[19.5,226,[15,47,48,49,50,51,52,56,57,67,68,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,139,140,141,142,143,144,145,146,147,148,159,160,161,162,163,164,165,172,173,174,175,176,177,178,181,182]],[21.0,224,[46,47,48,49,50,56,57,63,64,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,136,137,138,139,140,141,142,143,144,145,146,147,148,156,157,158,159,160,161,162,163,164,165,169,170,171,172,173,174,175,176,177,178,180]],[22.5,222,[46,47,48,49,50,59,60,61,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,135,136,137,138,139,140,141,142,143,144,145,146,147,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,185]],[24.0,219,[42,44,45,46,47,48,49,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,133,134,135,136,137,138,139,140,141,142,143,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180]],[25.5,217,[41,43,44,45,46,47,48,49,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,131,132,133,134,135,136,137,138,139,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179]],[27.0,214,[39,41,42,43,44,45,46,47,48,58,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,128,129,130,131,132,133,134,135,136,139,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178]],[28.5,211,[40,41,42,43,44,45,46,47,48,57,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176]],[30.0,208,[37,39,40,41,42,43,44,45,46,47,48,49,50,51,56,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173]],[31.5,205,[36,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,97,98,99,100,101,102,103,104,105,106,107,108,109,110,114,115,116,117,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171]],[33.0,201,[35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,96,97,98,99,100,101,102,103,104,105,106,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,173,174]],[34.5,198,[33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,95,96,97,98,99,100,101,102,103,104,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,171,172,173]],[36.0,194,[31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,97,98,99,100,101,102,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,165,166,170,171,172]],[37.5,190,[30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,90,91,92,93,102,106,109,110,111,112,113,114,115,116,117,118,119,120,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,162,168]],[39.0,187,[29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,89,90,91,92,104,107,108,109,110,111,112,113,114,115,116,117,118,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,156,159,166]],[40.5,182,[28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,87,88,89,90,95,98,99,101,102,104,106,107,108,109,110,111,112,113,114,115,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,153,154,155,162]],[42.0,178,[28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,85,86,87,88,89,93,95,98,99,100,101,102,110,111,112,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,158]],[43.5,174,[27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,83,84,86,87,88,89,92,93,95,96,97,98,99,100,106,107,108,109,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,155,156]],[45.0,170,[26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,54,55,84,85,86,87,88,89,90,92,93,94,95,96,97,98,101,102,103,104,105,106,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149]],[46.5,165,[26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,100,101,102,103,104,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145]],[48.0,161,[26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,50,54,55,56,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142]],[49.5,156,[23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,50,53,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,140]],[51.0,151,[22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,135]],[52.5,146,[19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,41,42,43,44,45,46,47,48,49,69,71,72,73,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,136]],[54.0,141,[18,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,40,41,42,43,44,45,46,47,67,69,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,132]],[55.5,136,[18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,39,40,41,42,43,44,66,71,72,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,127,128]],[57.0,131,[8,9,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,38,39,40,41,42,63,64,70,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,122,123,124]],[58.5,125,[8,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,35,36,37,38,39,40,65,66,67,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,118]],[60.0,120,[4,5,6,7,8,9,10,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,34,35,36,38,62,63,64,65,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,114,115]],[61.5,115,[4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,33,34,42,43,59,60,61,62,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,110,111,112]],[63.0,109,[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,33,34,39,40,41,57,58,59,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108]],[64.5,103,[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,27,29,30,31,32,37,38,39,45,46,55,56,57,58,59,60,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101]],[66.0,98,[3,26,27,28,30,32,33,39,40,41,43,45,46,47,48,49,50,51,55,58,59]],[67.5,92,[1,2,3,25,30,31,38,39,40,41,42,43,44,45,46,47,48,49,56]],[69.0,86,[4,5,6,15,17,21,22,24,27,28,29,30,37,38,39,40,41,42,43,44,45,46,52,53,54,55,56,57,60,83]],[70.5,80,[4,5,15,16,19,20,21,22,23,24,28,29,30,31,32,33,45,46,55,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74]],[72.0,74,[11,13,14,16,18,19,20,21,26,27,28,29,30,31,51,52,53,54,55,56,57,58,59,60,61,62,66,67]],[73.5,68,[11,15,16,17,18,23,24,25,26,27,28,29,44,49,50,51,52,53,54,55,57,60]],[75.0,62,[12,14,15,16,21,22,23,24,25,26,46,47,48,49,55,56]],[76.5,56,[9,12,13,14,15,17,18,19,20,21,22,23,24,38,44]],[78.0,50,[9,11,13,15,16,17,18,19,20,21,27]],[79.5,44,[10,12,14,15,16,17,18,19,23,33]]];
+
+const Globe = (() => {
+  const cv = document.getElementById("globe");
+  const ctx = cv.getContext("2d");
+  const D = Math.PI / 180;
+  const sinLat = [], cosLat = [], lon = [];
+  for (const [la, n, ks] of DOTS) {
+    for (const k of ks) {
+      sinLat.push(Math.sin(la * D)); cosLat.push(Math.cos(la * D));
+      lon.push((-180 + (k + .5) * 360 / n) * D);
+    }
+  }
+  const N = lon.length;
+
+  // Xitoydan Toshkentga yo'nalishlar (katta doira bo'ylab, ko'tarilgan yoy)
+  const TASHKENT = [41.31, 69.24];
+  const ORIGINS = [
+    { at: [23.13, 113.26], label: "XITOY", main: true },   // Guanchjou
+    { at: [31.23, 121.47] },                              // Shanxay
+    { at: [39.90, 116.40] },                              // Pekin
+    { at: [43.82, 87.62] },                               // Urumchi
+  ];
+  const vec = ([la, lo]) => [Math.cos(la * D) * Math.cos(lo * D), Math.sin(la * D), Math.cos(la * D) * Math.sin(lo * D)];
+  function route(a, b, lift) {
+    const A = vec(a), B = vec(b);
+    const dot = A[0] * B[0] + A[1] * B[1] + A[2] * B[2];
+    const w = Math.acos(clamp(dot, -1, 1)), s = Math.sin(w);
+    const pts = [];
+    for (let i = 0; i <= 64; i++) {
+      const t = i / 64, f1 = Math.sin((1 - t) * w) / s, f2 = Math.sin(t * w) / s;
+      const x = f1 * A[0] + f2 * B[0], y = f1 * A[1] + f2 * B[1], z = f1 * A[2] + f2 * B[2];
+      pts.push([Math.asin(y), Math.atan2(z, x), 1 + lift * Math.sin(Math.PI * t)]);
+    }
+    return pts;
+  }
+  ORIGINS.forEach((o, i) => { o.pts = route(o.at, TASHKENT, o.main ? .16 : .1); o.phase = i * .27; });
+
+  const st = { p: 0, mx: 0, my: 0, tx: 0, ty: 0, running: true };
+  let W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  }
+  addEventListener("resize", resize); resize();
+  addEventListener("pointermove", e => { st.tx = e.clientX / innerWidth - .5; st.ty = e.clientY / innerHeight - .5; });
+
+  let view;
+  function project(la, lo, r) {
+    const dl = lo - view.lon0, cd = Math.cos(dl);
+    const sl = Math.sin(la), cl = Math.cos(la);
+    const x = cl * Math.sin(dl);
+    const y = view.cl0 * sl - view.sl0 * cl * cd;
+    const z = view.sl0 * sl + view.cl0 * cl * cd;
+    const vis = z > 0 || (x * x + y * y) * r * r > 1;
+    return { X: view.cx + view.R * r * x, Y: view.cy - view.R * r * y, z, vis };
+  }
+
+  function draw(time) {
+    const t = time / 1000;
+    st.mx += (st.tx - st.mx) * .04; st.my += (st.ty - st.my) * .04;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const wide = W > 900;
+    const e = st.p < .5 ? 2 * st.p * st.p : 1 - Math.pow(-2 * st.p + 2, 2) / 2;
+    const R0 = wide ? Math.min(W * .34, H * .6) : Math.min(W * .74, H * .36);
+    const cx0 = wide ? W * .7 : W * .58, cy0 = wide ? H * .54 : H * .3;
+    const R1 = Math.max(W, H) * 1.35;
+    const R = lerp(R0, R1, e), cx = lerp(cx0, W / 2, e), cy = lerp(cy0, H * .52 + R1, e);
+    const lon0 = (92 + 6 * Math.sin(t * .13) + st.mx * 10 - e * 18) * D;
+    const lat0 = (24 + st.my * 6 + e * 12) * D;
+    view = { cx, cy, R, lon0, sl0: Math.sin(lat0), cl0: Math.cos(lat0) };
+    const fade = 1 - smooth(.25, .8, e);
+
+    // tashqi atmosfera nuri
+    let g = ctx.createRadialGradient(cx + R * .05, cy + R * .07, R * .92, cx, cy, R * 1.38);
+    g.addColorStop(0, "rgba(40,110,255,.6)");
+    g.addColorStop(.3, "rgba(30,85,235,.2)");
+    g.addColorStop(1, "rgba(20,60,200,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    // shar tanasi
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    g = ctx.createRadialGradient(cx - R * .35, cy - R * .45, R * .05, cx, cy, R);
+    g.addColorStop(0, "#17388A"); g.addColorStop(.6, "#0A1B4D"); g.addColorStop(1, "#0E31A0");
+    ctx.fillStyle = g; ctx.fill();
+    g = ctx.createRadialGradient(cx - R * .1, cy - R * .14, R * .76, cx, cy, R);
+    g.addColorStop(0, "rgba(60,130,255,0)"); g.addColorStop(.75, "rgba(60,130,255,.14)"); g.addColorStop(1, "rgba(130,185,255,.9)");
+    ctx.fillStyle = g; ctx.fill();
+
+    // brend yashil chekka nur
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R * 1.003, Math.PI * 1.02, Math.PI * 1.42);
+    ctx.strokeStyle = "rgba(107,240,160,.85)"; ctx.lineWidth = 2;
+    ctx.shadowColor = "#35B96C"; ctx.shadowBlur = 26; ctx.stroke();
+    ctx.restore();
+
+    // quruqlik nuqtalari
+    if (fade > .01) {
+      const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+      const r0 = Math.max(.7, R / 300);
+      const { sl0, cl0 } = view;
+      for (let i = 0; i < N; i++) {
+        const dl = lon[i] - lon0, cd = Math.cos(dl);
+        const z = sl0 * sinLat[i] + cl0 * cosLat[i] * cd;
+        if (z < .03) continue;
+        const x = cosLat[i] * Math.sin(dl), y = cl0 * sinLat[i] - sl0 * cosLat[i] * cd;
+        const X = cx + R * x, Y = cy - R * y;
+        if (X < -10 || X > W + 10 || Y < -10 || Y > H + 10) continue;
+        const shade = -.42 * x + .5 * y + .76 * z;
+        const b = shade > .78 ? 3 : shade > .52 ? 2 : shade > .25 ? 1 : 0;
+        const s = r0 * (.5 + .6 * z);
+        paths[b].moveTo(X + s, Y); paths[b].arc(X, Y, s, 0, Math.PI * 2);
+      }
+      const cols = [[70, 120, 255, .4], [120, 165, 255, .62], [175, 208, 255, .85], [236, 244, 255, 1]];
+      cols.forEach(([r, gg, bb, a], k) => { ctx.fillStyle = `rgba(${r},${gg},${bb},${a * fade})`; ctx.fill(paths[k]); });
+    }
+
+    // yo'nalishlar
+    if (fade > .01) {
+      ctx.lineCap = "round";
+      for (const o of ORIGINS) {
+        const P = o.pts.map(([la, lo, r]) => project(la, lo, r));
+        ctx.beginPath();
+        let pen = false;
+        for (const q of P) { if (!q.vis) { pen = false; continue; } pen ? ctx.lineTo(q.X, q.Y) : ctx.moveTo(q.X, q.Y); pen = true; }
+        ctx.strokeStyle = `rgba(107,240,160,${(o.main ? .45 : .22) * fade})`;
+        ctx.lineWidth = o.main ? 1.4 : 1; ctx.stroke();
+
+        // harakatlanuvchi "kometa"
+        const head = ((t * .32 + o.phase) % 1.35);
+        const tail = .28, n = P.length - 1;
+        ctx.save();
+        ctx.shadowColor = "#6BF0A0"; ctx.shadowBlur = 12;
+        for (let i = 1; i <= n; i++) {
+          const u = i / n;
+          if (u > head || u < head - tail) continue;
+          const a = P[i - 1], b = P[i];
+          if (!a.vis || !b.vis) continue;
+          const k = 1 - (head - u) / tail;
+          ctx.strokeStyle = `rgba(160,255,200,${k * fade})`;
+          ctx.lineWidth = (o.main ? 2.6 : 1.8) * (.4 + k * .6);
+          ctx.beginPath(); ctx.moveTo(a.X, a.Y); ctx.lineTo(b.X, b.Y); ctx.stroke();
+        }
+        ctx.restore();
+
+        const s = P[0];
+        if (s.vis) {
+          ctx.fillStyle = `rgba(255,255,255,${.9 * fade})`;
+          ctx.beginPath(); ctx.arc(s.X, s.Y, o.main ? 3 : 2, 0, Math.PI * 2); ctx.fill();
+          if (o.label) label(o.label, "得物 · OMBOR", s.X, s.Y, fade, 1);
+        }
+      }
+      // Toshkent — pulsatsiyalanuvchi nuqta
+      const d = project(TASHKENT[0] * D, TASHKENT[1] * D, 1);
+      if (d.vis) {
+        for (let k = 0; k < 2; k++) {
+          const f = (t * .7 + k * .5) % 1;
+          ctx.strokeStyle = `rgba(107,240,160,${(1 - f) * .8 * fade})`; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(d.X, d.Y, 4 + f * 18, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.fillStyle = `rgba(107,240,160,${fade})`;
+        ctx.shadowColor = "#6BF0A0"; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.arc(d.X, d.Y, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        label("TOSHKENT", "41.31°N 69.24°E", d.X, d.Y, fade, -1);
+      }
+    }
+  }
+  function label(a, b, x, y, alpha, side) {
+    ctx.save();
+    ctx.textAlign = side > 0 ? "left" : "right";
+    const ox = side > 0 ? 12 : -14;
+    ctx.font = "800 12px Archivo, sans-serif";
+    if ("letterSpacing" in ctx) ctx.letterSpacing = "2px";
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.fillText(a, x + ox, y - 8);
+    ctx.font = "600 9.5px Archivo, sans-serif";
+    ctx.fillStyle = `rgba(160,190,240,${alpha * .9})`;
+    ctx.fillText(b, x + ox, y + 6);
+    ctx.restore();
+  }
+
+  function loop(time) {
+    if (st.running) draw(time);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  new IntersectionObserver(([en]) => { st.running = en.isIntersecting; }).observe(cv);
+  return st;
+})();
+
+/* ==================================================================
+   Matn "scramble" effekti — videodagidek harflar aralashib ochiladi
+================================================================== */
+const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&@$";
+function scramble(el, dur = 1.1) {
+  const lines = el.querySelectorAll(".sl");
+  lines.forEach((ln, li) => {
+    const final = ln.dataset.text ?? (ln.dataset.text = ln.textContent);
+    if (REDUCED) { ln.textContent = final; return; }
+    cancelAnimationFrame(ln._raf);
+    const start = performance.now() + li * 140;
+    const step = now => {
+      const p = clamp((now - start) / (dur * 1000));
+      let out = "";
+      for (let i = 0; i < final.length; i++) {
+        const c = final[i];
+        if (c === " ") { out += " "; continue; }
+        const th = i / final.length * .7;
+        out += p >= th + .3 ? c : p >= th * .6 ? GLYPHS[(Math.random() * GLYPHS.length) | 0] : " ";
+      }
+      ln.textContent = out;
+      if (p < 1) ln._raf = requestAnimationFrame(step);
+    };
+    ln._raf = requestAnimationFrame(step);
+  });
+}
+function unscramble(el) {
+  el.querySelectorAll(".sl").forEach(ln => {
+    cancelAnimationFrame(ln._raf);
+    ln.dataset.text ??= ln.textContent;
+    ln.textContent = ln.dataset.text.replace(/\S/g, " ");
+  });
+}
+
+/* ==================================================================
+   Bulutlar
+================================================================== */
+document.querySelectorAll(".cloud-layer").forEach((layer, li) => {
+  const depth = +layer.dataset.depth;
+  const clusters = li === 0 ? 10 : 14;
+  let seed = 7 + li * 101;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let c = 0; c < clusters; c++) {
+    const cx = rnd() * 100, cy = 8 + (c / clusters) * 84 + rnd() * 6;
+    const puffs = 6 + (rnd() * 6 | 0);
+    for (let p = 0; p < puffs; p++) {
+      const d = document.createElement("div");
+      d.className = "puff";
+      const size = (120 + rnd() * 260) * (.55 + depth * .6);
+      d.style.width = size + "px"; d.style.height = size * .78 + "px";
+      d.style.left = `calc(${cx}% + ${(rnd() - .5) * size * 1.8}px)`;
+      d.style.top = `calc(${cy}% + ${(rnd() - .5) * size * .45}px)`;
+      d.style.opacity = (.55 + rnd() * .45) * (li === 0 ? .7 : 1);
+      layer.appendChild(d);
+    }
+  }
+});
+
+/* ==================================================================
+   Milestone qadamlari
+================================================================== */
+const STEPS = [
+  ["Tanlang", "@malstoreoriginal kanalidan mahsulot tanlang va post ostidagi «Buyurtma berish» havolasini bosing."],
+  ["Rasmiylashtiring", "Bot variant, o’lcham va telefon raqamingizni so’raydi. Oldindan faqat mahsulotning o’z narxi to’lanadi."],
+  ["Tekshiruv", "Mahsulot Poizon’da original ekani tekshiriladi va Xitoydagi omborimizga yetkaziladi."],
+  ["Yo’lda", "Qadoqlangach, aviapochta yoki avto reys bilan Toshkentga jo’naydi."],
+  ["Qo’lingizda", "Tovar yetib keldi — yetkazish va xizmat haqini to’laysiz. Hammasi shu."],
+];
+const ticks = document.getElementById("msTicks");
+STEPS.forEach((_, i) => {
+  const t = document.createElement("i");
+  t.className = "ms-tick" + (i === 0 ? " on" : "");
+  t.style.top = (8 + i / (STEPS.length - 1) * 84) + "%";
+  ticks.appendChild(t);
+});
+let msIndex = 0;
+function setStep(i) {
+  if (i === msIndex) return;
+  msIndex = i;
+  const num = document.getElementById("msNum"), h = document.getElementById("msH"), p = document.getElementById("msP");
+  num.textContent = String(i + 1).padStart(2, "0");
+  h.textContent = STEPS[i][0]; p.textContent = STEPS[i][1];
+  if (window.gsap) gsap.fromTo([num, h, p], { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: .45, stagger: .05, ease: "power3.out", overwrite: true });
+  document.querySelectorAll("#msDots i").forEach((d, k) => d.classList.toggle("on", k <= i));
+  ticks.querySelectorAll(".ms-tick").forEach((d, k) => d.classList.toggle("on", k <= i));
+}
+
+/* ==================================================================
+   Animatsiyalar (GSAP + ScrollTrigger + Lenis)
+================================================================== */
+const preloader = document.getElementById("preloader");
+function finishPreload(cb) {
+  document.body.classList.remove("loading");
+  if (!window.gsap || REDUCED) { preloader.remove(); cb && cb(); return; }
+  gsap.to(preloader, {
+    clipPath: "inset(0 0 100% 0)", duration: .9, ease: "power4.inOut",
+    onComplete: () => preloader.remove(),
+  });
+  setTimeout(() => cb && cb(), 350);
+}
+
+if (!window.gsap || !window.ScrollTrigger) {
+  document.documentElement.classList.add("no-gsap");
+  document.body.classList.remove("loading");
+  document.querySelectorAll(".scramble .sl").forEach(l => l.dataset.text = l.textContent);
+} else {
+  gsap.registerPlugin(ScrollTrigger);
+
+  // Silliq aylantirish
+  let lenis = null;
+  if (window.Lenis && !REDUCED) {
+    lenis = window.__lenis = new Lenis({ lerp: .09, wheelMultiplier: .9 });
+    lenis.on("scroll", ScrollTrigger.update);
+    gsap.ticker.add(t => lenis.raf(t * 1000));
+    gsap.ticker.lagSmoothing(0);
+    lenis.stop();
+    document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener("click", e => {
+      const target = document.querySelector(a.getAttribute("href"));
+      if (target) { e.preventDefault(); lenis.scrollTo(target, { duration: 1.6 }); }
+    }));
+  }
+
+  // --- Preloader
+  document.querySelectorAll(".pl-path").forEach(p => {
+    const len = p.getTotalLength ? p.getTotalLength() : 200;
+    p.style.setProperty("--len", len);
+  });
+  const plTl = gsap.timeline();
+  const counter = { v: 0 };
+  plTl.to(".pl-path", { strokeDashoffset: 0, duration: 1.1, stagger: .12, ease: "power2.inOut" }, 0)
+      .to(counter, { v: 100, duration: 1.3, ease: "power2.inOut", onUpdate: () => document.getElementById("plCount").textContent = Math.round(counter.v) }, 0)
+      .from(".pl-name", { opacity: 0, y: 10, duration: .5 }, .3);
+  const ready = new Promise(r => (document.readyState === "complete" ? r() : addEventListener("load", r)));
+  Promise.all([ready, document.fonts ? document.fonts.ready : null, new Promise(r => setTimeout(r, REDUCED ? 0 : 1400))])
+    .then(() => finishPreload(() => { lenis && lenis.start(); heroIntro(); ScrollTrigger.refresh(); }));
+
+  // --- Hero kirish animatsiyasi
+  gsap.set("#heroContent .ln > span", { yPercent: 110 });
+  gsap.set(["#heroContent .eyebrow", ".hero-p", ".hero-actions", ".hero-foot"], { opacity: 0, y: 16 });
+  function heroIntro() {
+    gsap.timeline()
+      .to("#heroContent .ln > span", { yPercent: 0, duration: 1.1, stagger: .09, ease: "power4.out" })
+      .to(["#heroContent .eyebrow", ".hero-p", ".hero-actions", ".hero-foot"], { opacity: 1, y: 0, duration: .8, stagger: .07, ease: "power3.out" }, .35)
+      .from("#globe", { opacity: 0, scale: 1.08, duration: 1.6, ease: "power2.out" }, 0);
+  }
+
+  const hdr = document.getElementById("hdr");
+
+  ScrollTrigger.create({ start: () => innerHeight * .3, end: "max", onToggle: s => hdr.classList.toggle("compact", s.isActive) });
+
+  // --- 1. Hero: globus kattalashib ufqqa aylanadi
+  gsap.timeline({
+    scrollTrigger: {
+      trigger: "#hero", start: "top top", end: "+=140%", pin: true, scrub: true,
+      onUpdate: s => { Globe.p = s.progress; },
+    },
+  })
+    .to("#heroInner", { y: -120, opacity: 0, ease: "none", duration: .45 }, 0)
+    .to(".hero-foot", { opacity: 0, duration: .2 }, 0)
+    .to({}, { duration: .55 });
+
+  // --- Satrma-satr chiqish
+  gsap.utils.toArray(".reveal").forEach(el => {
+    gsap.from(el.querySelectorAll(".ln > span"), {
+      yPercent: 110, duration: 1.1, stagger: .08, ease: "power4.out",
+      scrollTrigger: { trigger: el, start: "top 92%" },
+    });
+  });
+  gsap.utils.toArray(".count").forEach(el => {
+    const to = +el.dataset.to, o = { v: 0 };
+    gsap.to(o, {
+      v: to, duration: 1.6, ease: "power2.out",
+      scrollTrigger: { trigger: el, start: "top 88%" },
+      onUpdate: () => el.textContent = Math.round(o.v),
+    });
+  });
+  gsap.from(".stat", { opacity: 0, y: 30, stagger: .12, duration: .9, ease: "power3.out", scrollTrigger: { trigger: ".stats", start: "top 85%" } });
+
+  // --- 3. Hovli: kran konteynerni mashinaga yuklaydi, mashina yo'lga chiqadi
+  const $ = id => document.getElementById(id);
+  const S = { tx: 215, sy: 200, phase: 0, truckX: 700, pan: 0 };
+  const STACK = { x: 60, y: 320 }, DECK = 35;
+  const wheels = $("truck").querySelectorAll(".wh");
+  function renderYard() {
+    $("trolley").setAttribute("transform", `translate(${S.tx} 0)`);
+    $("spreader").setAttribute("transform", `translate(${S.tx} ${S.sy})`);
+    for (const [id, dx] of [["cableL", -30], ["cableR", 30]]) {
+      const c = $(id);
+      c.setAttribute("x1", S.tx + dx); c.setAttribute("x2", S.tx + dx); c.setAttribute("y2", S.sy);
+    }
+    let bx, by;
+    if (S.phase < 1) { bx = STACK.x; by = STACK.y; }
+    else if (S.phase < 2) { bx = S.tx - 155; by = S.sy + 14; }
+    else { bx = S.truckX + DECK; by = 420; }
+    $("box40").setAttribute("transform", `translate(${bx} ${by})`);
+    $("truck").setAttribute("transform", `translate(${S.truckX} 0)`);
+    const ang = (S.truckX - 700) / 28 * 180 / Math.PI;
+    wheels.forEach(w => w.setAttribute("transform", `rotate(${ang} ${w.getAttribute("x")} ${w.getAttribute("y")})`));
+    $("world").setAttribute("transform", `translate(${S.pan} 0)`);
+  }
+  renderYard();
+
+  // Yer chizig'ining ekrandagi joyi (transformlarsiz hisoblanadi)
+  const stage = $("yardStage"), panel = $("yardPanel");
+  const groundY = () => {
+    const w = stage.offsetWidth, h = stage.offsetHeight, k = Math.min(w / 1600, h / 720);
+    return stage.offsetTop + (h - 720 * k) / 2 + 620 * k;
+  };
+  const panelTop = () => innerHeight * (innerWidth > 900 ? .4 : .46);
+
+  gsap.set(panel, { y: () => innerHeight });
+  unscramble($("yardHead"));
+  let yardHeadShown = false;
+  const yardTl = gsap.timeline({
+    defaults: { ease: "power1.inOut" },
+    onUpdate: renderYard,
+    scrollTrigger: {
+      trigger: "#yard", start: "top top", end: "+=420%", pin: true, scrub: .6, invalidateOnRefresh: true,
+      onUpdate: s => {
+        const show = s.progress > .9;
+        if (show !== yardHeadShown) { yardHeadShown = show; show ? scramble($("yardHead")) : unscramble($("yardHead")); }
+      },
+    },
+  });
+  yardTl
+    .to(S, { sy: 306, duration: 1 })
+    .set(S, { phase: 1 })
+    .to(S, { sy: 175, duration: 1 })
+    .to(S, { tx: 890, duration: 2 })
+    .to(S, { sy: 406, duration: 1.2 })
+    .set(S, { phase: 2 })
+    .to(S, { sy: 200, duration: .8 })
+    .addLabel("drive")
+    .to(S, { truckX: 1160, pan: -900, duration: 2.4, ease: "power2.in" }, "drive")
+    .to("#yardCopy", { opacity: 0, y: -40, duration: .8 }, "drive")
+    .to(stage, { y: () => panelTop() - groundY(), duration: 1.6, ease: "power2.inOut" }, "drive+=1")
+    .to(panel, { y: () => panelTop(), duration: 1.6, ease: "power2.inOut" }, "drive+=1")
+    .to({}, { duration: .8 });
+
+  // Xizmatlar paydo bo'lishi
+  gsap.from(".svc", { opacity: 0, y: 40, duration: .9, stagger: .08, ease: "power3.out", scrollTrigger: { trigger: ".svc-grid", start: "top 85%" } });
+
+  // --- 5. Bosqichlar: quti qora tasma bo'ylab tushadi
+  const msTl = gsap.timeline({
+    scrollTrigger: {
+      trigger: "#steps", start: "top top", end: "+=380%", pin: true, scrub: .5,
+      onUpdate: s => setStep(Math.min(STEPS.length - 1, Math.floor(clamp(s.progress / .72) * STEPS.length * .999))),
+    },
+  });
+  msTl
+    .fromTo("#msBox", { top: "8%" }, { top: "92%", ease: "none", duration: 7.2 }, 0)
+    .fromTo("#msFill", { height: "0%" }, { height: "100%", ease: "none", duration: 7.2 }, 0)
+    .from("#msTitle .ln > span", { yPercent: 110, stagger: .2, duration: 1.2, ease: "power3.out" }, 0)
+    .to(["#msTitle", "#msCard"], { opacity: 0, duration: .8 }, 7.4)
+    .to("#msBox", { opacity: 0, scale: .6, duration: .6 }, 7.4)
+    .to("#msStrip", { width: "100%", backgroundColor: "#0B3FD9", duration: 2, ease: "power3.inOut" }, 7.6)
+    .to("#msStrip .ms-track, #msTicks", { opacity: 0, duration: .5 }, 7.6);
+  msTl.to("#msStrip", innerWidth <= 900 ? { right: 0, duration: 2, ease: "power3.inOut" } : { left: "50%", duration: 2, ease: "power3.inOut" }, 7.6);
+
+  // --- 6. Osmon: bulutlar orasidan samolyot uchadi
+  unscramble($("skyHead"));
+  let skyShown = false;
+  const skyTl = gsap.timeline({
+    scrollTrigger: {
+      trigger: "#sky", start: "top top", end: "+=300%", pin: true, scrub: .6, invalidateOnRefresh: true,
+      onUpdate: s => {
+        const show = s.progress > .12 && s.progress < .9;
+        if (show !== skyShown) { skyShown = show; show ? scramble($("skyHead"), 1.3) : unscramble($("skyHead")); }
+      },
+    },
+  });
+  document.querySelectorAll(".cloud-layer").forEach(l => {
+    const depth = +l.dataset.depth;
+    skyTl.fromTo(l, { yPercent: 0 }, { yPercent: -38 * depth - 12, ease: "none", duration: 10 }, 0);
+  });
+  skyTl
+    .fromTo("#plane",
+      { x: () => -innerWidth * .25, y: () => innerHeight * .85, rotate: 52, scale: .7 },
+      { x: () => innerWidth * 1.05, y: () => -innerHeight * .45, rotate: 52, scale: 1.25, ease: "none", duration: 8 }, .5)
+    .from("#skyCardL", { opacity: 0, x: -40, duration: 1 }, 2.4)
+    .from("#skyCardR", { opacity: 0, x: 40, duration: 1 }, 3.4)
+    .to(["#skyCardL", "#skyCardR"], { opacity: 0, duration: .8 }, 7.6)
+    .fromTo("#cloudCover", { opacity: 0, scale: .5 }, { opacity: 1, scale: 2.2, duration: 2.2, ease: "power2.in" }, 7.4)
+    .to(".cloud-layer", { scale: 1.6, duration: 2.2, ease: "power2.in" }, 7.4)
+    .to("#skyHead", { opacity: 0, scale: 1.2, duration: 1.2, ease: "power2.in" }, 7.6)
+    .to("#whiteOut", { opacity: 1, duration: .8 }, 8.8);
+
+  // --- Header rangi (pin'lardan keyin yaratiladi — aks holda joylari noto'g'ri hisoblanadi)
+  document.querySelectorAll("[data-theme]").forEach(sec => {
+    ScrollTrigger.create({
+      trigger: sec, start: "top 40px", end: "bottom 40px",
+      onToggle: s => s.isActive && hdr.classList.toggle("light", sec.dataset.theme === "light"),
+    });
+  });
+
+  // Bo'limlar o'lchami o'zgarsa
+  addEventListener("load", () => ScrollTrigger.refresh());
+}
+</script>
+<script>
+/* ==================================================================
+   MAHSULOTLAR — bot bilan bitta serverda ishlaydigan API'dan (api.py)
+   API manzili: ?api=... parametri > localhost'da :8081 > CONFIG.api
+================================================================== */
+(() => {
+  const CONFIG = {
+    // Railway'dagi bot servisining domeni, masalan "https://malstore-bot-production.up.railway.app"
+    api: "",
+    pageSize: 8,
+  };
+  const qsApi = new URLSearchParams(location.search).get("api");
+  const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  const API = (qsApi || (local ? "http://localhost:8081" : CONFIG.api)).replace(/\/$/, "");
+
+  const grid = document.getElementById("prGrid");
+  const count = document.getElementById("prCount");
+  const more = document.getElementById("prMore");
+  const BAG = '<svg viewBox="0 0 64 64"><path d="M20 20V14a12 12 0 0 1 24 0v6" fill="none" stroke="#12244F" stroke-width="5.5" stroke-linecap="round"/><rect x="8" y="19" width="48" height="38" rx="10" fill="#12244F"/><path d="M20 47V33l12 10 12-10v14" fill="none" stroke="#EEF2F8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const ARROW = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg>';
+
+  let items = [], shown = 0, channelUrl = "https://t.me/malstoreoriginal";
+
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const placeholder = () => { const ph = el("div", "ph"); ph.innerHTML = BAG; return ph; };
+  // API'dan kelgan havolalardan faqat Telegram'nikiga ruxsat
+  const safeUrl = u => (typeof u === "string" && /^https:\/\/t\.me\//.test(u) ? u : "");
+  const amount = s => +String(s).replace(/[^\d]/g, "") || 0;
+  // "0 ml" — bot bitta variantli tovarlarda shunday yozib qo'yadi
+  const variants = p => Object.entries(p.prices || {}).map(([label, price]) => ({
+    label: /^0\s*(ml)?$/i.test(label.trim()) ? "" : label, price,
+  }));
+  const refresh = () => window.ScrollTrigger && ScrollTrigger.refresh();
+
+  function skeleton(n) {
+    grid.replaceChildren(...Array.from({ length: n }, () => {
+      const c = el("div", "card skel");
+      c.append(el("div", "card-media"));
+      const b = el("div", "card-body");
+      const a = el("div", "sk"), z = el("div", "sk"); z.style.width = "60%";
+      const p = el("div", "sk"); p.style.cssText = "width:40%;height:18px;margin-top:10px";
+      b.append(a, z, p); c.append(b);
+      return c;
+    }));
+  }
+
+  function fallback(title, text) {
+    const box = el("div", "pr-empty");
+    box.append(el("b", null, title), el("span", null, text), el("br"));
+    const a = el("a", "btn btn-green"); a.href = channelUrl; a.target = "_blank"; a.rel = "noopener";
+    a.innerHTML = "Kanalga o’tish " + ARROW;
+    box.append(a);
+    grid.replaceChildren(box);
+    count.textContent = "";
+    more.hidden = true;
+    refresh();
+  }
+
+  function card(p) {
+    const c = el("button", "card");
+    c.type = "button";
+    c.setAttribute("aria-label", `#${p.id} — ${p.title}`);
+    const media = el("div", "card-media");
+    const imgs = (p.images || []).slice(0, 2);
+    if (imgs.length) {
+      if (imgs.length > 1) media.classList.add("two");
+      imgs.forEach((src, i) => {
+        const img = el("img", i ? "alt" : "");
+        img.src = src; img.alt = i ? "" : p.title; img.loading = "lazy"; img.decoding = "async";
+        img.onerror = () => { img.remove(); if (!media.querySelector("img")) media.prepend(placeholder()); };
+        media.append(img);
+      });
+    } else {
+      media.append(placeholder());
+    }
+    media.append(el("span", "tag", "#" + p.id), el("span", "tag g", "Original"));
+
+    const body = el("div", "card-body");
+    body.append(el("h3", "card-title", p.title));
+    const vs = variants(p);
+    const foot = el("div", "card-foot");
+    const price = el("div", "price");
+    if (vs.length > 1) {
+      const min = vs.reduce((m, v) => (amount(v.price) < amount(m.price) ? v : m));
+      price.append(el("small", null, `${vs.length} variant · dan`), document.createTextNode(min.price));
+    } else if (vs.length === 1) {
+      if (vs[0].label) price.append(el("small", null, vs[0].label));
+      price.append(document.createTextNode(vs[0].price));
+    }
+    const go = el("span", "card-go"); go.innerHTML = ARROW;
+    foot.append(price, go);
+    body.append(foot);
+    c.append(media, body);
+    c.addEventListener("click", () => openModal(p));
+    return c;
+  }
+
+  function showMore() {
+    const next = items.slice(shown, shown + CONFIG.pageSize).map(card);
+    if (shown === 0) grid.replaceChildren(...next); else grid.append(...next);
+    shown += next.length;
+    more.hidden = shown >= items.length;
+    refresh();
+    // Inline transform qolsa :hover ko'tarilishi ishlamaydi — oxirida tozalaymiz
+    if (window.gsap) gsap.fromTo(next, { opacity: 0, y: 40 }, {
+      opacity: 1, y: 0, duration: .8, stagger: .06, ease: "power3.out",
+      clearProps: "transform,opacity",
+    });
+  }
+  more.addEventListener("click", showMore);
+
+  // ---- Mahsulot oynasi
+  const pm = document.getElementById("pm");
+  const $ = id => document.getElementById(id);
+  function setMain(src, alt) {
+    const img = el("img"); img.src = src; img.alt = alt;
+    $("pmMain").replaceChildren(img);
+  }
+  function openModal(p) {
+    $("pmId").textContent = `#${p.id} · 100% Original`;
+    $("pmTitle").textContent = p.title;
+
+    const thumbs = $("pmThumbs"); thumbs.replaceChildren();
+    const images = p.images || [];
+    if (images.length) {
+      setMain(images[0], p.title);
+      if (images.length > 1) images.forEach((src, i) => {
+        const b = el("button", i ? "" : "on"); b.type = "button"; b.setAttribute("aria-label", `Rasm ${i + 1}`);
+        const im = el("img"); im.src = src; im.alt = ""; im.loading = "lazy"; b.append(im);
+        b.addEventListener("click", () => {
+          setMain(src, p.title);
+          thumbs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+        });
+        thumbs.append(b);
+      });
+    } else {
+      $("pmMain").replaceChildren(placeholder());
+    }
+
+    $("pmVars").replaceChildren(...variants(p).map(v => {
+      const r = el("div", "pm-var");
+      r.append(el("span", null, v.label || "Narxi"), el("b", null, v.price));
+      return r;
+    }));
+    $("pmSpecs").replaceChildren(...(p.specs || []).flatMap(([k, v]) => [el("dt", null, k), el("dd", null, v)]));
+
+    $("pmOrder").href = safeUrl(p.order_url) || channelUrl;
+    const post = safeUrl(p.post_url);
+    $("pmPost").hidden = !post;
+    if (post) $("pmPost").href = post;
+
+    window.__lenis && window.__lenis.stop();
+    pm.showModal();
+  }
+  pm.addEventListener("close", () => window.__lenis && window.__lenis.start());
+  $("pmClose").addEventListener("click", () => pm.close());
+  pm.addEventListener("click", e => { if (e.target === pm) pm.close(); });
+
+  // ---- Yuklash
+  async function load() {
+    if (!API) return fallback("Mahsulotlar kanalda", "Barcha mahsulotlar va narxlar Telegram kanalimizda.");
+    skeleton(4);
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 12000);
+      const res = await fetch(`${API}/api/products?limit=60`, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      if (safeUrl(data.channel)) channelUrl = data.channel;
+      // Bot username API'dan keladi — "Botga yozish" tugmalari ham botni ochsin
+      if (safeUrl(data.bot)) document.querySelectorAll('[data-link="bot"]').forEach(a => (a.href = data.bot));
+      items = Array.isArray(data.products) ? data.products : [];
+      if (!items.length) return fallback("Tez orada", "Yangi mahsulotlar kanalda e’lon qilinadi.");
+      count.textContent = `${items.length} ta mahsulot`;
+      showMore();
+    } catch (e) {
+      console.warn("Mahsulotlar yuklanmadi:", e);
+      fallback("Mahsulotlar kanalda", "Hozir ro’yxatni yuklab bo’lmadi — kanalimizda ko’ring.");
+    }
+  }
+  // Bo'limga yaqinlashganda yuklaymiz — hero animatsiyasiga xalal bermasin
+  new IntersectionObserver((en, io) => {
+    if (en[0].isIntersecting) { io.disconnect(); load(); }
+  }, { rootMargin: "1200px 0px" }).observe(document.getElementById("products"));
+})();
+</script>
+</body>
+</html>
