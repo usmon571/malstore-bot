@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Расходы">
+<meta name="theme-color" content="#0f1115">
+<title>Расходы</title>
+<style>
+  :root{--bg:#f4f5f7;--card:#fff;--tx:#14171f;--mut:#6b7280;--line:#e5e7eb;--acc:#2563eb;--red:#dc2626;--grn:#16a34a;--amb:#d97706}
+  @media(prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b22;--tx:#e8eaf0;--mut:#8b93a3;--line:#262a33;--acc:#60a5fa;--red:#f87171;--grn:#4ade80;--amb:#fbbf24}}
+  *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 -apple-system,system-ui,sans-serif}
+  .w{max-width:980px;margin:0 auto;padding:16px 16px 40px}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  h1{font-size:20px;margin:0}.mut{color:var(--mut);font-size:13px}
+  .seg{display:flex;gap:6px;margin:0 0 10px;overflow-x:auto;scrollbar-width:none}
+  .seg button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--tx);padding:7px 13px;border-radius:99px;cursor:pointer;font:inherit;font-size:14px}
+  .seg button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;min-width:0}
+  .full{grid-column:1/-1}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+  .big{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .exp{color:var(--red)}.inc{color:var(--grn)}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);align-items:baseline}
+  .row:last-child{border:0}.row b{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .row span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;border-radius:4px}
+  .donut{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .donut svg{width:150px;height:150px;flex:none}
+  .leg{flex:1;min-width:150px}
+  .leg div{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:14px}
+  .leg i{width:10px;height:10px;border-radius:3px;flex:none}
+  .leg b{margin-left:auto;font-variant-numeric:tabular-nums}
+  #days{width:100%;height:160px;display:block}
+  a{color:var(--acc)}
+  h3{font-size:13px;font-weight:500;color:var(--mut);margin:0 0 8px}
+</style>
+</head>
+<body><div class="w">
+<header><h1>💸 Расходы</h1><span class="mut" id="upd"></span></header>
+<div class="seg" id="per"></div>
+<div class="seg" id="wal"></div>
+<div class="grid">
+  <div class="card full"><div class="kpis">
+    <div><div class="mut">Потрачено</div><div class="big exp" id="exp">—</div><div class="mut" id="cnt"></div></div>
+    <div><div class="mut">Доход</div><div class="big inc" id="inc">—</div><div class="mut" id="bal"></div></div>
+    <div id="wsplit"></div>
+  </div></div>
+  <div class="card full"><h3>Расходы по дням</h3><svg id="days" viewBox="0 0 600 160" preserveAspectRatio="none"></svg><div class="mut" id="drange"></div></div>
+  <div class="card"><h3>Куда уходят деньги</h3><div class="donut"><svg id="pie" viewBox="0 0 42 42"></svg><div class="leg" id="leg"></div></div></div>
+  <div class="card"><h3>Топ магазинов</h3><div id="top"></div></div>
+  <div class="card full" id="bcard" hidden><h3>Лимиты на месяц</h3><div id="bud"></div></div>
+  <div class="card full"><h3>Последние операции</h3><div id="recent"></div></div>
+</div>
+<p class="mut"><a id="csv">Скачать CSV для Excel</a> · на iPhone: «Поделиться» → «На экран Домой»</p>
+</div>
+<script>
+const key=new URLSearchParams(location.search).get('key')||'';
+const PER=[['today','Сегодня'],['week','7 дней'],['month','Месяц'],['lastmonth','Прошлый'],['90','90 дней'],['all','Всё']];
+const WAL=[['','Всё'],['personal','👤 Личное'],['business','💼 Бизнес']];
+const COL=['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#4f46e5','#94a3b8'];
+let per='month',wal='';
+try{per=localStorage.getItem('per')||per;wal=localStorage.getItem('wal')??wal}catch(e){}
+const $=id=>document.getElementById(id);
+const f=n=>Math.round(n).toLocaleString('ru-RU').replace(/ /g,' ');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+$('csv').href='/api/export.csv?key='+encodeURIComponent(key);
+function seg(id,list,curv,set){$(id).innerHTML=list.map(([k,t])=>`<button class="${k==curv?'on':''}" data-k="${k}">${t}</button>`).join('');
+  $(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{set(b.dataset.k);load()})}
+function save(){try{localStorage.setItem('per',per);localStorage.setItem('wal',wal)}catch(e){}}
+async function load(){
+  seg('per',PER,per,v=>{per=v;save()});seg('wal',WAL,wal,v=>{wal=v;save()});
+  let d;
+  try{const r=await fetch(`/api/data?period=${per}&wallet=${wal}&key=${encodeURIComponent(key)}`);
+    if(r.status==401){document.body.innerHTML='<p style="padding:20px">Нет доступа. Откройте ссылку из бота: /dash</p>';return}
+    d=await r.json()}catch(e){$('upd').textContent='нет связи с ПК';return}
+  $('upd').textContent='обновлено '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+  $('exp').textContent=f(d.expense);$('cnt').textContent=d.count+' операций · сум';
+  $('inc').textContent=f(d.income);const net=d.income-d.expense;$('bal').textContent='итог '+(net>=0?'+':'−')+f(Math.abs(net));
+  const ws=d.wallets||{};
+  $('wsplit').innerHTML=wal?'':`<div class="mut">Личное / Бизнес</div><div class="big" style="font-size:18px">${f(ws.personal?.exp||0)} / ${f(ws.business?.exp||0)}</div><div class="mut">расходы</div>`;
+  // donut
+  const cats=d.by_category.slice(0,10);const rest=d.by_category.slice(10).reduce((a,c)=>a+c.s,0);
+  if(rest)cats.push({category:'Остальное',s:rest});
+  const tot=cats.reduce((a,c)=>a+c.s,0)||1;let off=25;
+  $('pie').innerHTML=`<circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--line)" stroke-width="6"/>`+cats.map((c,i)=>{const p=c.s/tot*100;const s=`<circle cx="21" cy="21" r="15.9" fill="none" stroke="${COL[i%COL.length]}" stroke-width="6" stroke-dasharray="${p} ${100-p}" stroke-dashoffset="${off}"><title>${esc(c.category)}: ${f(c.s)}</title></circle>`;off-=p;return s}).join('');
+  $('leg').innerHTML=cats.map((c,i)=>`<div><i style="background:${COL[i%COL.length]}"></i>${esc(c.category)}<b>${f(c.s)}</b></div>`).join('')||'<div class="mut">Пусто</div>';
+  $('top').innerHTML=d.top_merchants.map(m=>`<div class="row"><span>${esc(m.merchant)} <span class="mut">×${m.n}</span></span><b>${f(m.s)}</b></div>`).join('')||'<div class="mut">Пусто</div>';
+  $('bcard').hidden=!d.budgets.length;
+  $('bud').innerHTML=d.budgets.map(b=>{const p=Math.min(100,b.spent/b.limit*100);const c=p>=100?'var(--red)':p>=80?'var(--amb)':'var(--acc)';
+    return `<div style="padding:6px 0"><div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(b.category)}</span><span class="mut">${f(b.spent)} / ${f(b.limit)}</span></div><div class="bar"><i style="width:${p}%;background:${c}"></i></div></div>`}).join('');
+  $('recent').innerHTML=d.recent.map(t=>`<div class="row"><span>${t.wallet=='business'?'💼':'👤'} ${esc(t.ts.slice(8,10)+'.'+t.ts.slice(5,7)+' '+t.ts.slice(11,16))} · ${esc(t.category)} <span class="mut">${esc(t.merchant)}</span></span><b class="${t.kind}">${t.kind=='exp'?'−':'+'}${f(t.amount)}</b></div>`).join('')||'<div class="mut">Пусто</div>';
+  // bars by day
+  const bd=d.by_day,W=600,H=160,m=Math.max(1,...bd.map(x=>x.s)),w=W/Math.max(bd.length,1);
+  $('days').innerHTML=bd.map((x,i)=>{const h=Math.max(2,x.s/m*(H-10));return `<rect x="${i*w+w*.12}" y="${H-h}" width="${Math.max(1,w*.76)}" height="${h}" rx="2" fill="var(--acc)"><title>${x.d}: ${f(x.s)}</title></rect>`}).join('');
+  $('drange').textContent=bd.length?`${bd[0].d} — ${bd[bd.length-1].d} · макс ${f(m)} за день`:'';
+}
+load();setInterval(load,60000);
+</script>
+</body>
+</html>
