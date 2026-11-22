@@ -94,15 +94,37 @@ def is_duplicate(amount: int, kind: str, source: str, minutes: int = 10) -> bool
 
 
 def add(amount: int, kind: str, category: str, merchant: str = "", note: str = "", source: str = "manual",
-        raw: str = "", wallet: str = "personal", days_ago: int = 0) -> int:
-    ts = now() - timedelta(days=days_ago)
-    if days_ago:
-        ts = ts.replace(hour=12, minute=0, second=0)
+        raw: str = "", wallet: str = "personal", days_ago: int = 0, ts: datetime | None = None) -> int:
+    if ts is None:
+        ts = now() - timedelta(days=days_ago)
+        if days_ago:
+            ts = ts.replace(hour=12, minute=0, second=0)
     with _lock, _conn() as c:
         cur = c.execute(
             "INSERT INTO tx(ts,amount,kind,category,merchant,note,source,raw,wallet) VALUES(?,?,?,?,?,?,?,?,?)",
             (ts.strftime(FMT), amount, kind, category, merchant, note, source, raw[:1000], wallet))
         return cur.lastrowid
+
+
+def find_match(amount: int, kind: str, ts: datetime, minutes: int = 180):
+    """Запись Apple Pay/SMS на ту же сумму около времени чека, к которой ещё не привязан чек."""
+    lo, hi = (ts - timedelta(minutes=minutes)).strftime(FMT), (ts + timedelta(minutes=minutes)).strftime(FMT)
+    with _lock, _conn() as c:
+        rows = c.execute("SELECT * FROM tx WHERE amount=? AND kind=? AND ts BETWEEN ? AND ? "
+                         "AND source NOT IN ('manual','receipt') AND COALESCE(note,'') NOT LIKE '🧾%'", (amount, kind, lo, hi)).fetchall()
+    return min(rows, key=lambda r: abs(datetime.strptime(r["ts"], FMT) - ts), default=None)
+
+
+def attach_receipt(tx_id: int, merchant: str, note: str, raw: str, category: str | None = None) -> None:
+    """Дописывает к существующей записи товары из чека; магазин и категорию — только если их не было."""
+    with _lock, _conn() as c:
+        r = c.execute("SELECT merchant, category FROM tx WHERE id=?", (tx_id,)).fetchone()
+        if not r:
+            return
+        new_merchant = r["merchant"] or merchant
+        new_cat = category if category and r["category"] == "Прочее" else r["category"]
+        c.execute("UPDATE tx SET merchant=?, note=?, category=?, raw=? WHERE id=?",
+                  (new_merchant, note, new_cat, raw[:1000], tx_id))
 
 
 def get(tx_id: int):
@@ -113,6 +135,17 @@ def get(tx_id: int):
 def delete(tx_id: int) -> bool:
     with _lock, _conn() as c:
         return c.execute("DELETE FROM tx WHERE id=?", (tx_id,)).rowcount > 0
+
+
+TX_COLS = ("id", "ts", "amount", "kind", "category", "merchant", "note", "source", "raw", "wallet")
+
+
+def restore(row: dict) -> int:
+    """Вернуть удалённую запись (кнопка «↩️ Вернуть») с тем же id."""
+    vals = [row.get(k, "") for k in TX_COLS]
+    with _lock, _conn() as c:
+        c.execute(f"INSERT OR REPLACE INTO tx({','.join(TX_COLS)}) VALUES({','.join('?' * len(TX_COLS))})", vals)
+    return int(row["id"])
 
 
 def last_id() -> int | None:
@@ -191,7 +224,8 @@ def summary(period: str, wallet: str | None = None, ref: datetime | None = None)
                 "AND merchant!='' GROUP BY lower(merchant) ORDER BY s DESC LIMIT 8").fetchall()
         wallets = c.execute("SELECT wallet, kind, SUM(amount) s FROM tx WHERE ts>=? AND ts<? GROUP BY wallet, kind",
                             (since, until)).fetchall()
-        recent = c.execute(f"SELECT * FROM tx WHERE 1=1{w} ORDER BY ts DESC, id DESC LIMIT 30",
+        recent = c.execute(f"SELECT id, ts, amount, kind, category, merchant, note, source, wallet FROM tx "
+                           f"WHERE 1=1{w} ORDER BY ts DESC, id DESC LIMIT 30",
                            ((wallet,) if wallet else ())).fetchall()
         ms, me = period_range("month", ref)
         spent_m = {r["category"]: r["s"] for r in c.execute(

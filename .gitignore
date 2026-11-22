@@ -18,3 +18,5 @@ expenses/config.json
 expenses/expenses.db
 expenses/expenses.log
 expenses/backups/
+expenses/expenses.log.*
+expenses/crash.log

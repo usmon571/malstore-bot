@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 import core
 import ledger
+import receipt
 
 log = logging.getLogger("expenses.web")
 HTML = (core.BASE / "dashboard.html").read_bytes()
@@ -76,7 +77,8 @@ class H(BaseHTTPRequestHandler):
                     source = str(d.get("source") or source)[:12]
             except (ValueError, TypeError):
                 pass
-            ok, msg = core.ingest_text(text, source)
+            link = receipt.find_link(text) or receipt.find_link(body)
+            ok, msg = core.ingest_receipt(link) if link else core.ingest_text(text, source)
             return self._send(200 if ok else 422, json.dumps({"ok": ok, "result": msg}, ensure_ascii=False).encode())
         self._send(404, b'{"error":"not found"}')
 

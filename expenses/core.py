@@ -7,6 +7,7 @@ import os
 import secrets as _secrets
 import socket
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -14,6 +15,7 @@ import requests
 
 import ledger
 import parsing
+import receipt
 from parsing import WALLET_LABEL, fmt
 
 log = logging.getLogger("expenses")
@@ -173,9 +175,9 @@ def budget_warning(category: str) -> str:
     return ""
 
 
-def record(p: parsing.Parsed, source: str, raw: str = ""):
+def record(p: parsing.Parsed, source: str, raw: str = "", ts=None, check_dup: bool = True):
     """Сохраняет запись. Возвращает (row | None, duplicate: bool)."""
-    if ledger.is_duplicate(p.amount, p.kind, source):
+    if check_dup and ledger.is_duplicate(p.amount, p.kind, source):
         return None, True
     cat, wallet = p.category, p.wallet
     l_cat, l_wal = ledger.learned(p.merchant)
@@ -185,8 +187,165 @@ def record(p: parsing.Parsed, source: str, raw: str = ""):
             wallet = parsing.wallet_for(cat) if wallet == parsing.PERSONAL else wallet
         if l_wal:
             wallet = l_wal
-    tx_id = ledger.add(p.amount, p.kind, cat, p.merchant, p.note, source, raw, wallet, p.days_ago)
+    tx_id = ledger.add(p.amount, p.kind, cat, p.merchant, p.note, source, raw, wallet, p.days_ago, ts=ts)
     return ledger.get(tx_id), False
+
+
+# ---------- чеки soliq.uz ----------
+
+RETRY_MINUTES = (10, 30, 60, 180, 360, 720)  # чек обычно доходит до налоговой за минуты, иногда — за часы
+
+
+def process_receipt(ref: receipt.Ref, fetcher=receipt.fetch) -> tuple[str, object, object]:
+    """Возвращает (статус, row, Receipt): new | linked | already. Ошибки — receipt.ReceiptError."""
+    known = ledger.meta_get(ref.key)
+    if known and ledger.get(int(known)):
+        return "already", ledger.get(int(known)), None
+    rc = fetcher(ref)
+    p = receipt.to_parsed(rc)
+    when = ref.when or ledger.now()
+    raw = receipt.raw_for(ref, rc)
+    match = ledger.find_match(p.amount, p.kind, when)
+    if match:
+        ledger.attach_receipt(match["id"], p.merchant, p.note, raw,
+                              p.category if p.category != parsing.OTHER else None)
+        row, status = ledger.get(match["id"]), "linked"
+    else:
+        row, _ = record(p, "receipt", raw, ts=when, check_dup=False)
+        status = "new"
+    ledger.meta_set(ref.key, str(row["id"]))
+    return status, row, rc
+
+
+def receipt_message(status: str, row, rc) -> str:
+    if status == "already":
+        return "🧾 Этот чек уже записан: " + describe(row)
+    head = "🧾 Чек привязан к покупке: " if status == "linked" else "🧾 ✅ "
+    lines = [head + describe(row)]
+    if rc and rc.items:
+        for name, qty, price in rc.items[:8]:
+            q = f" ×{qty:g}" if qty and qty != 1 else ""
+            lines.append(f"• {name[:45]}{q} — {fmt(price)}")
+        if len(rc.items) > 8:
+            lines.append(f"… и ещё {len(rc.items) - 8}")
+    if status == "new":
+        lines[0] += budget_warning(row["category"])
+    return "\n".join(lines)
+
+
+NOTIFY_RETRY_SECONDS = (5, 15, 30, 60, 120, 300)  # интернет на ПК пропадает — не теряем уведомления
+
+
+def _send(payload: dict, row) -> bool:
+    res = tg("sendMessage", **payload)
+    if not (isinstance(res, dict) and res.get("ok")):
+        return False
+    mid = (res.get("result") or {}).get("message_id")
+    if mid and row is not None:
+        ledger.meta_set(f"msg:{mid}", str(row["id"]))
+    return True
+
+
+def notify(text: str, row=None, silent: bool = False, background: bool = True) -> None:
+    """Сообщение владельцу. В фоне и с повторами: Apple Pay не ждёт, а сообщение дойдёт, когда вернётся интернет."""
+    owner = owner_id()
+    if not (owner and BOT_TOKEN):
+        return
+    payload = {"chat_id": owner, "text": text, "disable_web_page_preview": True, "disable_notification": silent}
+    if row is not None:
+        payload["reply_markup"] = tx_keyboard_json(row)
+
+    def run():
+        if _send(payload, row):
+            return
+        for pause in NOTIFY_RETRY_SECONDS:
+            time.sleep(pause)
+            if _send(payload, row):
+                return
+        log.warning("уведомление не доставлено: %s", text[:80])
+
+    if background:
+        threading.Thread(target=run, daemon=True).start()
+    else:
+        run()
+
+
+# Чеки, которых ещё нет в налоговой, хранятся в базе — после перезапуска бот продолжает их проверять.
+_pending_lock = threading.Lock()
+
+
+def pending_receipts() -> dict:
+    try:
+        return json.loads(ledger.meta_get("pending_receipts") or "{}")
+    except ValueError:
+        return {}
+
+
+def _set_pending(link: str, attempt: int | None) -> None:
+    with _pending_lock:
+        p = pending_receipts()
+        if attempt is None:
+            p.pop(link, None)
+        else:
+            p[link] = attempt
+        ledger.meta_set("pending_receipts", json.dumps(p))
+
+
+def retry_receipt(ref: receipt.Ref, attempt: int = 0) -> None:
+    """Чек ещё не в базе налоговой — пробуем позже в фоне и пишем в Telegram, когда получится."""
+    if attempt >= len(RETRY_MINUTES):
+        _set_pending(ref.link, None)
+        return notify(f"🧾 Чек №{ref.r} так и не появился на сайте налоговой. Запишите сумму вручную.")
+    _set_pending(ref.link, attempt)
+
+    def run():
+        try:
+            status, row, rc = process_receipt(ref)
+            _set_pending(ref.link, None)
+            notify(receipt_message(status, row, rc), row)
+        except receipt.ReceiptPending:
+            retry_receipt(ref, attempt + 1)
+        except receipt.ReceiptError as e:
+            if attempt + 1 < len(RETRY_MINUTES) and "не отвечает" in str(e):
+                return retry_receipt(ref, attempt + 1)
+            _set_pending(ref.link, None)
+            notify(f"🧾 Чек №{ref.r} не прочитан: {e}")
+        except Exception as e:  # noqa: BLE001
+            log.exception("чек: %s", e)
+
+    t = threading.Timer(RETRY_MINUTES[attempt] * 60, run)
+    t.daemon = True
+    t.start()
+
+
+def resume_receipts() -> int:
+    """При запуске: снова поставить в очередь чеки, которые ждали налоговую до перезапуска."""
+    n = 0
+    for link, attempt in pending_receipts().items():
+        ref = receipt.from_link(link)
+        if ref:
+            retry_receipt(ref, int(attempt))
+            n += 1
+        else:
+            _set_pending(link, None)
+    return n
+
+
+def ingest_receipt(link: str) -> tuple[bool, str]:
+    """Чек из Shortcuts / веба: обработать сейчас или поставить в очередь, уведомить владельца."""
+    ref = receipt.from_link(link)
+    if not ref:
+        return False, "это не ссылка чека soliq.uz"
+    try:
+        status, row, rc = process_receipt(ref)
+    except receipt.ReceiptPending:
+        retry_receipt(ref)
+        notify(f"🧾 Чек №{ref.r} ещё не дошёл до налоговой — проверю через {RETRY_MINUTES[0]} минут.")
+        return True, "в очереди"
+    except receipt.ReceiptError as e:
+        return False, str(e)
+    notify(receipt_message(status, row, rc), row)
+    return True, describe(row)
 
 
 def ingest_text(text: str, source: str) -> tuple[bool, str]:
@@ -197,8 +356,5 @@ def ingest_text(text: str, source: str) -> tuple[bool, str]:
     row, dup = record(p, source, text)
     if dup:
         return True, "дубликат пропущен"
-    owner = owner_id()
-    if owner and BOT_TOKEN:
-        tg("sendMessage", chat_id=owner, text=f"✅ {describe(row)}" + budget_warning(row["category"]),
-           reply_markup=tx_keyboard_json(row), disable_notification=True)
+    notify(f"✅ {describe(row)}" + budget_warning(row["category"]), row, silent=True)
     return True, describe(row)

@@ -1,24 +1,33 @@
 """Бот учёта расходов (личное + бизнес). Запуск: venv\\Scripts\\python.exe expenses\\main.py"""
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+import json
 import logging
+import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update  # noqa: E402
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update  # noqa: E402
 from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, ContextTypes,  # noqa: E402
                           MessageHandler, filters)
 
 import core  # noqa: E402
 import ledger  # noqa: E402
 import parsing  # noqa: E402
+import receipt  # noqa: E402
 import web  # noqa: E402
 from parsing import BUSINESS, PERSONAL, WALLET_LABEL, fmt  # noqa: E402
 
-logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO)
+# EXP_LOG_FILE (задаёт start_expenses.bat) — лог в файл с ротацией: 3 файла по 2 МБ, в UTF-8
+_log_file = os.getenv("EXP_LOG_FILE")
+logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO,
+                    handlers=[RotatingFileHandler(_log_file, maxBytes=2_000_000, backupCount=3, encoding="utf-8")]
+                    if _log_file else None)
 log = logging.getLogger("expenses")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -35,7 +44,8 @@ HELP = (
     "• <code>вчера 20000 бензин</code> — задним числом\n"
     "• <code>500000 карго #б</code> — в 💼 бизнес (карго, товары, реклама попадают туда сами)\n"
     "• Перешлите SMS/уведомление Humo, Uzcard или банка — разберу сам\n"
-    "• Apple Pay — один раз настройте /apple, дальше всё автоматически\n\n"
+    "• Apple Pay — один раз настройте /apple, дальше всё автоматически\n"
+    "• 🧾 Фото QR-кода с чека (soliq.uz) или ссылка из него — запишу магазин, сумму и товары\n\n"
     "<b>Исправить</b>: кнопки под записью, или ответьте (reply) на запись новой суммой.\n\n"
     "<b>Команды</b>\n/today /week /month — отчёты\n/dash — дашборд с графиками\n"
     "/find корзинка — поиск\n/limit еда 2000000 — лимит в месяц (0 — снять), /limits\n"
@@ -119,6 +129,13 @@ def report(period: str, wallet: str | None = None, ref: dt.datetime | None = Non
     return "\n".join(lines)
 
 
+def delete_tx(row) -> InlineKeyboardMarkup:
+    """Удаляет запись, но помнит её — под сообщением кнопка «↩️ Вернуть»."""
+    ledger.meta_set(f"del:{row['id']}", json.dumps(dict(row), ensure_ascii=False))
+    ledger.delete(row["id"])
+    return kb([[("↩️ Вернуть", f"undel:{row['id']}")]])
+
+
 def report_kb(period: str, wallet: str | None) -> InlineKeyboardMarkup:
     opts = [("Всё", "all"), (WALLET_LABEL[PERSONAL], PERSONAL), (WALLET_LABEL[BUSINESS], BUSINESS)]
     return kb([[(("• " if (wallet or "all") == w else "") + t, f"rep:{period}:{w}") for t, w in opts]])
@@ -186,8 +203,7 @@ async def undo(u, c):
     i = ledger.last_id()
     row = ledger.get(i) if i else None
     if row:
-        ledger.delete(i)
-        await u.message.reply_text(f"↩️ Удалено: {core.describe(row)}", reply_markup=MENU)
+        await u.message.reply_text(f"🗑 Удалено: {core.describe(row)}", reply_markup=delete_tx(row))
     else:
         await u.message.reply_text("Нечего удалять.")
 
@@ -287,6 +303,10 @@ async def text(u: Update, c):
             row = ledger.get(int(tx_id))
             return await msg.reply_text("✏️ Исправлено: " + core.describe(row), reply_markup=tx_kb(row))
 
+    link = receipt.find_link(t)
+    if link:
+        return await handle_receipt(msg, link)
+
     forwarded = msg.forward_origin is not None
     if forwarded or parsing.looks_like_bank(t):
         p, source = parsing.parse_bank(t, core.usd_rate()), "sms"
@@ -299,6 +319,63 @@ async def text(u: Update, c):
         return await msg.reply_text("♻️ Эта покупка уже пришла из Apple Pay — второй раз не считаю.")
     sent = await msg.reply_text("✅ " + core.describe(row) + core.budget_warning(row["category"]), reply_markup=tx_kb(row))
     ledger.meta_set(f"msg:{sent.message_id}", str(row["id"]))
+
+
+# ---------- чеки soliq.uz ----------
+
+RECEIPT_HELP = ("Сфотографируйте QR-код на чеке поближе и пришлите сюда. "
+                "Или наведите камеру iPhone на QR, откройте ссылку и нажмите «Поделиться» → этот бот.")
+
+
+async def handle_receipt(msg, link: str):
+    ref = receipt.from_link(link)
+    if not ref:
+        return await msg.reply_text("Это ссылка soliq.uz, но не чек (нет номера или даты).")
+    wait = await msg.reply_text("🧾 Читаю чек…")
+    try:
+        status, row, rc = await asyncio.to_thread(core.process_receipt, ref)
+        log.info("чек %s/%s: %s, %s сум", ref.t, ref.r, status, row["amount"])
+    except receipt.ReceiptPending:
+        log.info("чек %s/%s: ещё нет в налоговой, повторю", ref.t, ref.r)
+        core.retry_receipt(ref)
+        return await wait.edit_text(f"🧾 Чек ещё не дошёл до налоговой (так бывает первые минуты-часы). "
+                                    f"Проверю сам через {core.RETRY_MINUTES[0]} минут и напишу.")
+    except receipt.ReceiptError as e:
+        log.warning("чек %s/%s: %s", ref.t, ref.r, e)
+        return await wait.edit_text(f"🧾 Не получилось прочитать чек: {e}")
+    await wait.edit_text(core.receipt_message(status, row, rc), reply_markup=tx_kb(row))
+    ledger.meta_set(f"msg:{wait.message_id}", str(row["id"]))
+
+
+async def photo(u: Update, c):
+    if not await guard(u):
+        return
+    msg = u.message
+    f = msg.photo[-1] if msg.photo else msg.document
+    data = None
+    for attempt in range(3):  # интернет на ПК бывает медленным — фото качаем с повтором
+        try:
+            data = bytes(await (await f.get_file(read_timeout=60)).download_as_bytearray(read_timeout=60))
+            break
+        except Exception as e:  # noqa: BLE001
+            log.warning("фото не скачалось (%s/3): %s", attempt + 1, e)
+            await asyncio.sleep(2)
+    if data is None:
+        return await msg.reply_text("Не смог скачать фото — на сервере плохой интернет. Пришлите ещё раз через минуту.")
+    try:
+        codes = await asyncio.to_thread(receipt.decode_qr, data)
+    except Exception as e:  # noqa: BLE001 — битое фото, не картинка и т.п.
+        log.warning("QR: %s", e)
+        codes = []
+    link = next((x for x in map(receipt.find_link, codes) if x), None)
+    log.info("фото: QR %s, чек %s", len(codes), "да" if link else "нет")
+    if link:
+        return await handle_receipt(msg, link)
+    if codes:
+        return await msg.reply_text("Нашёл QR, но это не чек soliq.uz.\n" + RECEIPT_HELP)
+    if msg.caption:  # фото с подписью «45000 обед» — как обычный текст
+        return await text(u, c)
+    await msg.reply_text("Не нашёл QR-код на фото 🤔\n" + RECEIPT_HELP)
 
 
 # ---------- кнопки ----------
@@ -315,13 +392,20 @@ async def cb(u: Update, c):
         return await q.answer()
 
     tx_id = int(rest.split(":")[0])
+    if act == "undel":
+        saved = ledger.meta_get(f"del:{tx_id}")
+        if saved and not ledger.get(tx_id):
+            ledger.restore(json.loads(saved))
+        row = ledger.get(tx_id)
+        if row:
+            await q.edit_message_text("↩️ Возвращено: " + core.describe(row), reply_markup=tx_kb(row))
+        return await q.answer()
     row = ledger.get(tx_id)
     if not row:
         await q.edit_message_text("Запись уже удалена")
         return await q.answer()
     if act == "del":
-        ledger.delete(tx_id)
-        await q.edit_message_text(f"🗑 Удалено: {core.describe(row)}")
+        await q.edit_message_text(f"🗑 Удалено: {core.describe(row)}", reply_markup=delete_tx(row))
     elif act == "cats":
         cats = parsing.ALL_CATEGORIES
         rows = [[(cats[i], f"set:{tx_id}:{i}") for i in range(r, min(r + 2, len(cats)))] for r in range(0, len(cats), 2)]
@@ -349,30 +433,87 @@ async def cb(u: Update, c):
 
 # ---------- автосводки ----------
 
+def daily_time() -> dt.time:
+    hh, mm = (int(x) for x in core.DAILY_AT.split(":"))
+    return dt.time(hh, mm)
+
+
+def due_day(now: dt.datetime) -> dt.datetime:
+    """За какой день положен итог: после 22:00 — за сегодня, раньше — за вчера (если ПК спал или был выключен)."""
+    return now if now.time() >= daily_time() else now - dt.timedelta(days=1)
+
+
 async def nightly(c: ContextTypes.DEFAULT_TYPE):
-    """22:00: итог дня (или напоминание), по воскресеньям — неделя, 1-го числа — прошлый месяц + CSV. Плюс бэкап."""
-    owner = core.owner_id()
+    """22:00: итог дня (или напоминание), по воскресеньям — неделя, 1-го числа — прошлый месяц + CSV. Плюс бэкап.
+    Если ПК спал в 22:00, итог придёт, когда он проснётся (и не дважды)."""
+    now = ledger.now()
+    day = due_day(now)
+    key = day.strftime("%Y-%m-%d")
+    if ledger.meta_get("last_nightly") == key:
+        return
+    ledger.meta_set("last_nightly", key)
     try:
         ledger.backup()
     except Exception as e:
         log.warning("бэкап не удался: %s", e)
+    owner = core.owner_id()
     if not owner:
         return
-    now = ledger.now()
-    if ledger.count_on(now) == 0:
-        await c.bot.send_message(owner, "📝 Сегодня ничего не записано. Если были траты — просто напишите, "
+    late = day.date() != now.date()
+    when = "Вчера" if late else "Сегодня"
+    if ledger.count_on(day) == 0:
+        await c.bot.send_message(owner, f"📝 {when} ничего не записано. Если были траты — просто напишите, "
                                         "например <code>30000 обед</code>. Если нет — отлично 👍",
                                  parse_mode="HTML", reply_markup=MENU)
     else:
-        await c.bot.send_message(owner, "🌙 " + report("today"), parse_mode="HTML", reply_markup=report_kb("today", None))
-    if now.weekday() == 6:
-        await c.bot.send_message(owner, "📈 Итог недели\n" + report("week"), parse_mode="HTML",
+        period = "yesterday" if late else "today"
+        await c.bot.send_message(owner, "🌙 " + report(period), parse_mode="HTML", reply_markup=report_kb(period, None))
+    if day.weekday() == 6:
+        await c.bot.send_message(owner, "📈 Итог недели\n" + report("week", ref=day), parse_mode="HTML",
                                  reply_markup=report_kb("week", None))
-    if now.day == 1:
-        await c.bot.send_message(owner, "📆 Итог месяца\n" + report("lastmonth"), parse_mode="HTML",
+    if day.day == 1:
+        await c.bot.send_message(owner, "📆 Итог месяца\n" + report("lastmonth", ref=day), parse_mode="HTML",
                                  reply_markup=report_kb("lastmonth", None))
         await c.bot.send_document(owner, ledger.export_csv("lastmonth").encode("utf-8-sig"),
-                                  filename=f"rashody-{(now - dt.timedelta(days=1)):%Y-%m}.csv")
+                                  filename=f"rashody-{(day - dt.timedelta(days=1)):%Y-%m}.csv")
+
+
+async def catch_up(c: ContextTypes.DEFAULT_TYPE):
+    """После запуска: прислать итог, пропущенный пока бот был выключен. При самом первом запуске — не спамить."""
+    if ledger.meta_get("last_nightly") is None:
+        return ledger.meta_set("last_nightly", due_day(ledger.now()).strftime("%Y-%m-%d"))
+    await nightly(c)
+
+
+COMMANDS = [("today", "Итог за сегодня"), ("week", "Последние 7 дней"), ("month", "Этот месяц"),
+            ("dash", "Дашборд с графиками"), ("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
+            ("limits", "Все лимиты"), ("undo", "Удалить последнюю запись"), ("export", "Скачать CSV для Excel"),
+            ("apple", "Настроить Apple Pay"), ("status", "Адреса сервера"), ("help", "Как пользоваться")]
+
+
+async def post_init(app: Application):
+    try:  # меню команд по кнопке «/» в Telegram
+        await app.bot.set_my_commands([BotCommand(n, d) for n, d in COMMANDS])
+    except Exception as e:  # noqa: BLE001 — нет интернета при старте не должно мешать запуску
+        log.warning("меню команд не обновлено: %s", e)
+
+
+async def trace(u: Update, c):
+    """Короткая строка в логе на каждое входящее сообщение (без текста — только тип)."""
+    m = u.effective_message
+    if m:
+        kind = next((k for k in ("photo", "document", "text", "caption", "sticker", "voice", "video") if getattr(m, k, None)),
+                    "other")
+        mime = f" {m.document.mime_type}" if m.document else ""
+        log.info("входящее: %s%s от %s", kind, mime, u.effective_user.id if u.effective_user else "?")
+
+
+async def on_error(update, c: ContextTypes.DEFAULT_TYPE):
+    """Пропал интернет — короткая строка в логе вместо простыни; остальное — с трассировкой."""
+    from telegram.error import NetworkError
+    if isinstance(c.error, NetworkError):
+        return log.warning("нет связи с Telegram: %s", c.error)
+    log.error("ошибка: %s", c.error, exc_info=c.error)
 
 
 def main():
@@ -381,18 +522,31 @@ def main():
     ledger.init()
     core.secret()
     web.start()
-    app = Application.builder().token(core.BOT_TOKEN).build()
+    # таймауты больше стандартных 5 с: на медленном интернете ответы и фото иначе обрываются
+    app = (Application.builder().token(core.BOT_TOKEN).connect_timeout(20).read_timeout(30).write_timeout(30)
+           .media_write_timeout(60).pool_timeout(10).post_init(post_init).build())
     for name, fn in [("start", start), ("help", help_cmd), ("today", today), ("week", week), ("month", month),
                      ("dash", dash), ("status", status), ("undo", undo), ("export", export), ("find", find),
                      ("limit", limit), ("limits", limits), ("apple", apple)]:
         app.add_handler(CommandHandler(name, fn))
+    app.add_handler(MessageHandler(filters.ALL, trace), group=-1)
     app.add_handler(CallbackQueryHandler(cb))
+    app.add_error_handler(on_error)
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo))
     app.add_handler(MessageHandler((filters.TEXT | filters.CAPTION) & ~filters.COMMAND, text))
-    hh, mm = (int(x) for x in core.DAILY_AT.split(":"))
-    app.job_queue.run_daily(nightly, dt.time(hh, mm, tzinfo=TZ), name="nightly")
-    log.info("Бот расходов запущен. Дашборд: %s", core.base_url())
+    t = daily_time()
+    # misfire_grace_time: ПК спал в 22:00 — итог всё равно придёт, когда проснётся (в пределах 12 ч)
+    app.job_queue.run_daily(nightly, dt.time(t.hour, t.minute, tzinfo=TZ), name="nightly",
+                            job_kwargs={"misfire_grace_time": 12 * 3600, "coalesce": True})
+    app.job_queue.run_once(catch_up, 30, name="catch_up")
+    n = core.resume_receipts()
+    log.info("Бот расходов запущен. Дашборд: %s%s", core.base_url(), f" · чеков в очереди: {n}" if n else "")
     app.run_polling(allowed_updates=["message", "callback_query"])
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        log.exception("бот упал")  # start_expenses.bat перезапустит через 10 секунд
+        raise

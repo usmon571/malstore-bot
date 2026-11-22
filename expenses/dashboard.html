@@ -92,9 +92,9 @@ async function load(){
   $('bcard').hidden=!d.budgets.length;
   $('bud').innerHTML=d.budgets.map(b=>{const p=Math.min(100,b.spent/b.limit*100);const c=p>=100?'var(--red)':p>=80?'var(--amb)':'var(--acc)';
     return `<div style="padding:6px 0"><div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(b.category)}</span><span class="mut">${f(b.spent)} / ${f(b.limit)}</span></div><div class="bar"><i style="width:${p}%;background:${c}"></i></div></div>`}).join('');
-  $('recent').innerHTML=d.recent.map(t=>`<div class="row"><span>${t.wallet=='business'?'💼':'👤'} ${esc(t.ts.slice(8,10)+'.'+t.ts.slice(5,7)+' '+t.ts.slice(11,16))} · ${esc(t.category)} <span class="mut">${esc(t.merchant)}</span></span><b class="${t.kind}">${t.kind=='exp'?'−':'+'}${f(t.amount)}</b></div>`).join('')||'<div class="mut">Пусто</div>';
+  $('recent').innerHTML=d.recent.map(t=>`<div class="row"><span>${t.wallet=='business'?'💼':'👤'} ${esc(t.ts.slice(8,10)+'.'+t.ts.slice(5,7)+' '+t.ts.slice(11,16))} · ${esc(t.category)} <span class="mut">${esc(t.merchant)}</span>${t.note?`<br><small class="mut">${esc(t.note)}</small>`:''}</span><b class="${t.kind}">${t.kind=='exp'?'−':'+'}${f(t.amount)}</b></div>`).join('')||'<div class="mut">Пусто</div>';
   // bars by day
-  const bd=d.by_day,W=600,H=160,m=Math.max(1,...bd.map(x=>x.s)),w=W/Math.max(bd.length,1);
+  const bd=d.by_day,W=600,H=160,m=Math.max(1,...bd.map(x=>x.s)),w=W/Math.max(bd.length,14);
   $('days').innerHTML=bd.map((x,i)=>{const h=Math.max(2,x.s/m*(H-10));return `<rect x="${i*w+w*.12}" y="${H-h}" width="${Math.max(1,w*.76)}" height="${h}" rx="2" fill="var(--acc)"><title>${x.d}: ${f(x.s)}</title></rect>`}).join('');
   $('drange').textContent=bd.length?`${bd[0].d} — ${bd[bd.length-1].d} · макс ${f(m)} за день`:'';
 }
