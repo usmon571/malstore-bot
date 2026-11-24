@@ -226,6 +226,13 @@ def set_purpose(tx_id: int, note: str, category: str | None = None, wallet: str 
                   (note, category, wallet, tx_id))
 
 
+def history(limit: int = 10, offset: int = 0) -> list:
+    """Последние записи, новые сверху; берём на одну больше — чтобы знать, есть ли ещё."""
+    with _lock, _conn() as c:
+        return c.execute("SELECT * FROM tx ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?",
+                         (limit + 1, offset)).fetchall()
+
+
 def unexplained(since: datetime, limit: int = 20) -> list:
     """Расходы из SMS / Apple Pay без пояснения — для /why и вечернего напоминания."""
     with _lock, _conn() as c:

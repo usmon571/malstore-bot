@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -37,11 +38,16 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 TZ = dt.timezone(dt.timedelta(hours=5))  # Ташкент, без перехода на летнее время
 
+MENU_VERSION = "2"
 MENU = ReplyKeyboardMarkup(
-    [["📅 Сегодня", "🗓 Неделя", "📆 Месяц"], ["📊 Дашборд", "↩️ Отменить", "❓ Помощь"]],
-    resize_keyboard=True, input_field_placeholder="15000 такси")
+    [["➕ Расход", "➕ Доход"], ["📊 Дашборд", "📋 История", "❓ На что?"], ["🎯 Лимиты", "💳 Карты", "⚙️ Ещё"]],
+    resize_keyboard=True, is_persistent=True, input_field_placeholder="15000 такси")
 
 HELP = (
+    "<b>Меню внизу</b>\n"
+    "➕ Расход / ➕ Доход — по шагам: категория → сумма → на что\n"
+    "📊 Дашборд — картинка с графиками · 📋 История — последние записи, правка и поиск\n"
+    "❓ На что? — расходы без пояснения · 🎯 Лимиты · 💳 Карты · ⚙️ Ещё — отчёты, Excel, настройки\n\n"
     "<b>Как записывать</b>\n"
     "• <code>15000 такси</code> · <code>45к обед</code> · <code>1.2 млн аренда</code>\n"
     "• <code>+3 млн зарплата</code> — доход\n"
@@ -151,20 +157,20 @@ def report_kb(period: str, wallet: str | None) -> InlineKeyboardMarkup:
 
 async def send_report(u: Update, period: str):
     if await guard(u):
-        await u.message.reply_text(report(period), parse_mode="HTML", reply_markup=report_kb(period, None))
+        await u.effective_message.reply_text(report(period), parse_mode="HTML", reply_markup=report_kb(period, None))
 
 
 # ---------- команды ----------
 
 async def start(u: Update, c: ContextTypes.DEFAULT_TYPE):
     if await guard(u):
-        await u.message.reply_text("Привет! Я считаю ваши деньги: личные и бизнес отдельно.\n\n" + HELP,
+        await u.effective_message.reply_text("Привет! Я считаю ваши деньги: личные и бизнес отдельно.\n\n" + HELP,
                                    parse_mode="HTML", reply_markup=MENU)
 
 
 async def help_cmd(u: Update, c):
     if await guard(u):
-        await u.message.reply_text(HELP, parse_mode="HTML", reply_markup=MENU)
+        await u.effective_message.reply_text(HELP, parse_mode="HTML", reply_markup=MENU)
 
 
 async def today(u, c):
@@ -199,7 +205,7 @@ async def dash(u, c):
     if not await guard(u):
         return
     png = await dash_image("month", "all")
-    await u.message.reply_photo(png, reply_markup=dash_kb("month", "all"))
+    await u.effective_message.reply_photo(png, reply_markup=dash_kb("month", "all"))
 
 
 async def web_link(u, c):
@@ -234,7 +240,7 @@ async def status(u, c):
                      "войти одним аккаунтом. После этого перезапустите бота.")
     lines.append(f"Домашняя сеть: {us['lan']}")
     lines.append(f"Курс USD: {fmt(core.usd_rate())}")
-    await u.message.reply_text("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
+    await u.effective_message.reply_text("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def undo(u, c):
@@ -243,16 +249,16 @@ async def undo(u, c):
     i = ledger.last_id()
     row = ledger.get(i) if i else None
     if row:
-        await u.message.reply_text(f"🗑 Удалено: {core.describe(row)}", reply_markup=delete_tx(row))
+        await u.effective_message.reply_text(f"🗑 Удалено: {core.describe(row)}", reply_markup=delete_tx(row))
     else:
-        await u.message.reply_text("Нечего удалять.")
+        await u.effective_message.reply_text("Нечего удалять.")
 
 
 async def export(u, c):
     if not await guard(u):
         return
     period = (c.args[0] if c.args else "all")
-    await u.message.reply_document(ledger.export_csv(period).encode("utf-8-sig"),
+    await u.effective_message.reply_document(ledger.export_csv(period).encode("utf-8-sig"),
                                    filename=f"rashody-{ledger.now():%Y-%m-%d}.csv",
                                    caption="Откройте в Excel или Google Таблицах")
 
@@ -262,40 +268,51 @@ async def find(u, c: ContextTypes.DEFAULT_TYPE):
         return
     q = " ".join(c.args).strip()
     if not q:
-        return await u.message.reply_text("Пример: /find корзинка")
+        return await u.effective_message.reply_text("Пример: /find корзинка")
+    await u.effective_message.reply_text(find_text(q))
+
+
+def find_text(q: str) -> str:
     rows = ledger.search(q)
     if not rows:
-        return await u.message.reply_text("Ничего не нашёл.")
+        return f"🔍 «{q}» — ничего не нашёл."
     total = sum(r["amount"] for r in rows if r["kind"] == "exp")
-    await u.message.reply_text("\n".join(f"{r['ts'][8:10]}.{r['ts'][5:7]} {core.describe(r)}" for r in rows)
-                               + f"\n\nИтого расходов: {fmt(total)}")
+    return (f"🔍 «{q}»\n" + "\n".join(f"{r['ts'][8:10]}.{r['ts'][5:7]} {core.describe(r)}" for r in rows)
+            + f"\n\nИтого расходов: {fmt(total)}")
 
 
 async def limit(u, c: ContextTypes.DEFAULT_TYPE):
     if not await guard(u):
         return
     if len(c.args) < 2:
-        return await u.message.reply_text("Пример: /limit еда 2000000\nКатегории: " + ", ".join(parsing.ALL_CATEGORIES))
+        return await u.effective_message.reply_text("Пример: /limit еда 2000000\nКатегории: " + ", ".join(parsing.ALL_CATEGORIES))
     name = " ".join(c.args[:-1]).lower()
     cat = next((x for x in parsing.ALL_CATEGORIES if x.lower().startswith(name)), None) or \
         next((x for x in parsing.ALL_CATEGORIES if name in x.lower()), None)
     off = c.args[-1] == "0"
     p = None if off else parsing.parse_manual(c.args[-1])
     if not cat or (not off and not p):
-        return await u.message.reply_text("Не понял категорию или сумму. Пример: /limit кафе 800к")
+        return await u.effective_message.reply_text("Не понял категорию или сумму. Пример: /limit кафе 800к")
     ledger.budget_set(cat, 0 if off else p.amount)
-    await u.message.reply_text(f"Лимит «{cat}»: {'снят' if off else fmt(p.amount) + ' сум в месяц'}")
+    await u.effective_message.reply_text(f"Лимит «{cat}»: {'снят' if off else fmt(p.amount) + ' сум в месяц'}")
 
 
 async def limits(u, c):
     if not await guard(u):
         return
+    await u.effective_message.reply_text(limits_text(), parse_mode="HTML",
+                                         reply_markup=kb([[("➕ Задать или изменить лимит", "lim:pick")]]))
+
+
+def limits_text() -> str:
     b = ledger.summary("month")["budgets"]
     if not b:
-        return await u.message.reply_text("Лимитов нет. Пример: /limit кафе 800к")
-    await u.message.reply_text("\n".join(
-        f"{bar(min(x['spent'], x['limit']), x['limit'])} {x['category']}: {fmt(x['spent'])} / {fmt(x['limit'])}"
-        for x in b))
+        return ("🎯 <b>Лимиты на месяц</b>\nПока нет. Лимит — сколько готовы тратить в месяц на категорию; "
+                "бот предупредит на 80% и 100%.")
+    return "🎯 <b>Лимиты на месяц</b>\n" + "\n".join(
+        f"{'🚨' if x['spent'] >= x['limit'] else '⚠️' if x['spent'] >= x['limit'] * 0.8 else '✅'} "
+        f"{x['category']}\n{bar(min(x['spent'], x['limit']), x['limit'], 10)} {fmt(x['spent'])} / {fmt(x['limit'])}"
+        for x in b)
 
 
 async def apple(u, c):
@@ -304,7 +321,7 @@ async def apple(u, c):
     url = f"{core.base_url()}/api/ingest?key={core.secret()}"
     warn = "" if core.tailscale_ip() or core.PUBLIC_URL else \
         "\n⚠️ Tailscale не найден — покупки вне дома не дойдут. Сначала /status.\n"
-    await u.message.reply_text(
+    await u.effective_message.reply_text(
         "🍎 <b>Apple Pay → бот</b> (один раз, 3 минуты)\n"
         f"{warn}\n"
         "1. iPhone → <b>Команды</b> → <b>Автоматизация</b> → «+» → <b>Транзакция</b>.\n"
@@ -341,7 +358,7 @@ async def cards_cmd(u, c):
     if not await guard(u):
         return
     t = cards_text()
-    await u.message.reply_text(
+    await u.effective_message.reply_text(
         (f"<b>Мои карты</b> (остаток из последней SMS банка)\n{t}\n\n" if t else
          "Карт пока нет — они появятся сами из SMS банка (/sms).\n\n") +
         "Переводы между своими картами не считаются расходом: бот находит обе SMS (та же сумма, ±15 минут) "
@@ -354,7 +371,7 @@ async def sms(u, c):
     if not await guard(u):
         return
     url = f"{core.base_url()}/api/ingest?key={core.secret()}&source=sms"
-    await u.message.reply_text(
+    await u.effective_message.reply_text(
         "📩 <b>SMS банка → бот автоматически</b> (Alliance Pay, Payme, Click…)\n\n"
         "У Alliance Pay и Payme нет открытого API, но каждая оплата с карты Humo/Uzcard приходит SMS от банка — "
         "её и будем пересылать. Платежи через Payme тоже приходят этой SMS.\n\n"
@@ -375,8 +392,279 @@ async def sms(u, c):
         parse_mode="HTML", disable_web_page_preview=True)
 
 
-BUTTONS = {"📅 Сегодня": today, "🗓 Неделя": week, "📆 Месяц": month,
-           "📊 Дашборд": dash, "↩️ Отменить": undo, "↩️ Отменить последнее": undo, "❓ Помощь": help_cmd}
+# ---------- меню: запись по шагам, история, лимиты ----------
+
+CAT_ICON = {"Еда": "🛒", "Кафе и рестораны": "🍔", "Транспорт": "🚕", "Связь и интернет": "📱",
+            "Коммуналка и жильё": "🏠", "Здоровье": "💊", "Подписки": "📺", "Развлечения": "🎬", "Хотелки": "✨",
+            "Одежда и покупки": "🛍", "Переводы": "💸", "Товары (бизнес)": "📦", "Доставка и карго": "🚚",
+            "Реклама": "📣", "Сервисы бизнеса": "🖥", parsing.OTHER: "▫️", parsing.INCOME_CAT: "💰"}
+SOURCE_LABEL = {"manual": "вручную", "sms": "SMS банка", "wallet": "Apple Pay", "receipt": "чек soliq.uz"}
+DRAFT_TTL = 15 * 60  # незаконченная запись «забывается» через 15 минут
+
+
+def cat_label(cat: str) -> str:
+    return f"{CAT_ICON.get(cat, '▫️')} {cat}"
+
+
+def get_draft(c) -> dict | None:
+    d = c.user_data.get("draft")
+    if d and time.time() - d["t"] > DRAFT_TTL:
+        c.user_data.pop("draft", None)
+        return None
+    return d
+
+
+def set_draft(c, **kw) -> dict:
+    c.user_data["draft"] = {**kw, "t": time.time()}
+    return c.user_data["draft"]
+
+
+def clear_draft(c) -> None:
+    c.user_data.pop("draft", None)
+
+
+def cat_grid(prefix: str, with_income: bool = False) -> list:
+    """Плитки категорий по две в ряд; callback — индекс в ALL_CATEGORIES."""
+    idx = [i for i, x in enumerate(parsing.ALL_CATEGORIES) if with_income or x != parsing.INCOME_CAT]
+    return [[(cat_label(parsing.ALL_CATEGORIES[i]), f"{prefix}{i}") for i in idx[r:r + 2]] for r in range(0, len(idx), 2)]
+
+
+def wallet_row(wallet: str) -> list:
+    return [(("• " if wallet == w else "") + WALLET_LABEL[w], f"add:w:{w}") for w in (PERSONAL, BUSINESS)]
+
+
+def draft_view(d: dict) -> tuple[str, InlineKeyboardMarkup]:
+    """Текст и кнопки шага записи — одно сообщение, которое меняется по мере выбора."""
+    if d["step"] == "cat":
+        return ("➕ <b>Новый расход</b> — выберите категорию.\n"
+                "<i>Или просто напишите в чат: <code>15000 такси</code></i>",
+                kb([wallet_row(d["wallet"])] + cat_grid("add:c:") + [[("✖️ Отмена", "add:x")]]))
+    if d["kind"] == "inc":
+        return ("➕ <b>Доход</b> · " + WALLET_LABEL[d["wallet"]] + "\nНапишите сумму и откуда: "
+                "<code>3 млн зарплата</code>, <code>500к продажа</code>",
+                kb([wallet_row(d["wallet"]), [("✖️ Отмена", "add:x")]]))
+    return (f"➕ {cat_label(d['cat'])} · {WALLET_LABEL[d['wallet']]}\n"
+            "Напишите сумму и на что: <code>45000 продукты</code> или просто <code>45к</code>",
+            kb([wallet_row(d["wallet"]), [("← Категория", "add:back"), ("✖️ Отмена", "add:x")]]))
+
+
+async def add_expense(u, c):
+    if not await guard(u):
+        return
+    d = set_draft(c, step="cat", kind="exp", wallet=PERSONAL)
+    t, k = draft_view(d)
+    sent = await u.effective_message.reply_text(t, parse_mode="HTML", reply_markup=k)
+    d["mid"] = sent.message_id
+
+
+async def add_income(u, c):
+    if not await guard(u):
+        return
+    d = set_draft(c, step="amount", kind="inc", cat=parsing.INCOME_CAT, wallet=PERSONAL)
+    t, k = draft_view(d)
+    sent = await u.effective_message.reply_text(t, parse_mode="HTML", reply_markup=k)
+    d["mid"] = sent.message_id
+
+
+async def _drop_buttons(c, chat_id: int, mid: int | None, markup=None) -> None:
+    """Убрать кнопки у сообщения-шага, чтобы по ним не нажали ещё раз."""
+    if mid:
+        try:
+            await c.bot.edit_message_reply_markup(chat_id, mid, reply_markup=markup)
+        except Exception:  # noqa: BLE001 — сообщение уже изменено или удалено
+            pass
+
+
+def purpose_kb(row) -> InlineKeyboardMarkup:
+    return kb(core.tx_buttons(row) + [[("Пропустить", f"add:skip:{row['id']}")]])
+
+
+async def draft_text(msg, c, d: dict, t: str) -> bool:
+    """Текст пришёл во время записи по шагам. True — обработан здесь."""
+    step = d["step"]
+    if step == "amount":
+        p = parsing.parse_manual(t)
+        if not p:
+            await msg.reply_text("Не понял сумму 🤔 Например: <code>45000</code> или <code>45к обед</code>",
+                                 parse_mode="HTML")
+            return True
+        wallet = BUSINESS if p.wallet == BUSINESS or d["cat"] in parsing.BUSINESS_CATS else d["wallet"]
+        note = p.note
+        row, _ = core.record(parsing.Parsed(p.amount, d["kind"], d["cat"], merchant=note, note=note, wallet=wallet,
+                                            days_ago=p.days_ago), "manual", t, check_dup=False, keep_category=True)
+        await _drop_buttons(c, msg.chat_id, d.get("mid"))
+        warn = core.budget_warning(row["category"]) if row["kind"] == "exp" else ""
+        if row["kind"] == "exp" and not note:
+            sent = await msg.reply_text(f"✅ {core.describe(row)}{warn}\n❓ На что? Напишите пару слов "
+                                        "или нажмите «Пропустить».", reply_markup=purpose_kb(row))
+            set_draft(c, step="purpose", tx=row["id"], mid=sent.message_id)
+        else:
+            clear_draft(c)
+            sent = await msg.reply_text(f"✅ {core.describe(row)}{warn}", reply_markup=tx_kb(row))
+        ledger.meta_set(f"msg:{sent.message_id}", str(row["id"]))
+        return True
+    if step == "purpose":
+        p = parsing.parse_manual(t)
+        if p and p.amount >= 500:  # «15000 такси» — это уже новая запись, а не пояснение
+            clear_draft(c)
+            return False
+        row = ledger.get(d["tx"])
+        clear_draft(c)
+        if not row:
+            return False
+        row = core.set_purpose(row, t)
+        await _drop_buttons(c, msg.chat_id, d.get("mid"), tx_kb(row))
+        sent = await msg.reply_text("📝 " + core.describe(row), reply_markup=tx_kb(row))
+        ledger.meta_set(f"msg:{sent.message_id}", str(row["id"]))
+        return True
+    if step == "limit":
+        p = None if t.strip() == "0" else parsing.parse_manual(t)
+        if t.strip() != "0" and not p:
+            await msg.reply_text("Напишите сумму в месяц, например <code>800к</code> (0 — снять лимит)",
+                                 parse_mode="HTML")
+            return True
+        clear_draft(c)
+        ledger.budget_set(d["cat"], p.amount if p else 0)
+        await _drop_buttons(c, msg.chat_id, d.get("mid"))
+        done = f"снят" if not p else f"{fmt(p.amount)} сум в месяц"
+        await msg.reply_text(f"🎯 «{d['cat']}»: {done}\n\n" + limits_text(), parse_mode="HTML",
+                             reply_markup=kb([[("➕ Задать или изменить лимит", "lim:pick")]]))
+        return True
+    if step == "find":
+        clear_draft(c)
+        await msg.reply_text(find_text(t))
+        return True
+    clear_draft(c)  # шаг «категория», а человек написал текст — значит, пишет запись сам: «15000 такси»
+    return False
+
+
+HIST_PAGE = 10
+
+
+def history_view(offset: int = 0) -> tuple[str, InlineKeyboardMarkup]:
+    rows = ledger.history(HIST_PAGE, offset)
+    more, rows = len(rows) > HIST_PAGE, rows[:HIST_PAGE]
+    if not rows:
+        return "📋 Записей пока нет. Нажмите «➕ Расход» или напишите <code>15000 такси</code>.", kb([])
+    lines = ["📋 <b>История</b> — нажмите номер, чтобы открыть запись"]
+    for n, r in enumerate(rows, 1):
+        sign = "🔁 " if r["kind"] == "move" else "−" if r["kind"] == "exp" else "+"
+        what = " · ".join(x for x in (r["category"], r["merchant"] or core.purpose_of(r)) if x)
+        lines.append(f"{n}. {r['ts'][8:10]}.{r['ts'][5:7]} {r['ts'][11:16]}  <b>{sign}{fmt(r['amount'])}</b> "
+                     f"{CAT_ICON.get(r['category'], '')} {what[:40]}")
+    nums = [(str(n), f"hist:show:{r['id']}") for n, r in enumerate(rows, 1)]
+    grid = [nums[i:i + 5] for i in range(0, len(nums), 5)]
+    nav = ([("◀️ Раньше", f"hist:page:{offset + HIST_PAGE}")] if more else []) + \
+          ([("Новее ▶️", f"hist:page:{max(0, offset - HIST_PAGE)}")] if offset else [])
+    return "\n".join(lines), kb(grid + ([nav] if nav else []) + [[("🔍 Поиск", "hist:find")]])
+
+
+async def history(u, c):
+    if not await guard(u):
+        return
+    t, k = history_view()
+    await u.effective_message.reply_text(t, parse_mode="HTML", reply_markup=k)
+
+
+def record_card(r) -> str:
+    lines = [core.describe(r), f"🕓 {r['ts'][8:10]}.{r['ts'][5:7]}.{r['ts'][:4]} {r['ts'][11:16]} · "
+                               f"{SOURCE_LABEL.get(r['source'], r['source'])}"]
+    if r["note"] and r["note"] != r["merchant"]:
+        lines.append(f"📝 {r['note'][:300]}")
+    lines.append("\nОтветьте на это сообщение суммой — исправлю, словами — запишу «на что».")
+    return "\n".join(lines)
+
+
+async def more(u, c):
+    if not await guard(u):
+        return
+    await u.effective_message.reply_text("⚙️ <b>Ещё</b>", parse_mode="HTML", reply_markup=kb([
+        [("📅 Сегодня", "menu:today"), ("🗓 Неделя", "menu:week"), ("📆 Месяц", "menu:month")],
+        [("🔍 Поиск", "menu:find"), ("↩️ Удалить последнюю", "menu:undo")],
+        [("📤 Excel / CSV", "menu:export"), ("🌐 Веб-версия", "menu:web")],
+        [("📱 Apple Pay", "menu:apple"), ("📩 SMS банка", "menu:sms"), ("🖥 Сервер", "menu:status")],
+        [("❓ Помощь", "menu:help")]]))
+
+
+async def ask_find(u, c):
+    if not await guard(u):
+        return
+    sent = await u.effective_message.reply_text("🔍 Что ищем? Напишите слово: <code>корзинка</code>, <code>такси</code>",
+                                                parse_mode="HTML")
+    set_draft(c, step="find", mid=sent.message_id)
+
+
+async def show_menu(u, c):
+    if await guard(u):
+        await u.effective_message.reply_text("Меню внизу 👇", reply_markup=MENU)
+
+
+async def menu_cb(q, u, c, rest: str) -> None:
+    """Кнопки меню, шагов записи, истории и лимитов (callback вида add:…, hist:…, lim:…, menu:…)."""
+    act, _, arg = rest.partition(":")
+    area = q.data.split(":")[0]
+    if area == "menu":
+        await q.answer()
+        return await MENU_ACTIONS[rest](u, c)
+    if area == "hist":
+        if act == "page":
+            t, k = history_view(int(arg))
+            await q.edit_message_text(t, parse_mode="HTML", reply_markup=k)
+        elif act == "show":
+            row = ledger.get(int(arg))
+            if not row:
+                await q.answer("Запись уже удалена")
+                return
+            sent = await q.message.reply_text(record_card(row), reply_markup=tx_kb(row))
+            ledger.meta_set(f"msg:{sent.message_id}", str(row["id"]))
+        elif act == "find":
+            await q.answer()
+            return await ask_find(u, c)
+        return await q.answer()
+    if area == "lim":
+        if act == "pick":
+            await q.edit_message_reply_markup(kb(cat_grid("lim:c:") + [[("✖️ Отмена", "lim:x")]]))
+        elif act == "c":
+            cat = parsing.ALL_CATEGORIES[int(arg)]
+            cur = ledger.budget_get(cat)
+            now_txt = f"Сейчас: {fmt(cur)}. " if cur else ""
+            sent = await q.message.reply_text(f"🎯 Лимит «{cat}» на месяц. {now_txt}Напишите сумму, например "
+                                              "<code>800к</code> (0 — снять).", parse_mode="HTML")
+            set_draft(c, step="limit", cat=cat, mid=sent.message_id)
+            await q.edit_message_reply_markup(kb([[("➕ Задать или изменить лимит", "lim:pick")]]))
+        elif act == "x":
+            await q.edit_message_reply_markup(kb([[("➕ Задать или изменить лимит", "lim:pick")]]))
+        return await q.answer()
+    # area == "add": шаги записи
+    d = get_draft(c)
+    if act == "skip":
+        if d and d.get("step") == "purpose":
+            clear_draft(c)
+        row = ledger.get(int(arg)) if arg.isdigit() else None
+        await q.edit_message_reply_markup(tx_kb(row) if row else None)
+        return await q.answer("Ок, без пояснения")
+    if not d or d.get("mid") != q.message.message_id:
+        await q.edit_message_reply_markup(None)
+        return await q.answer("Эта запись уже закрыта — нажмите «➕ Расход» ещё раз")
+    if act == "x":
+        clear_draft(c)
+        await q.edit_message_text("✖️ Отменено")
+        return await q.answer()
+    if act == "c":
+        cat = parsing.ALL_CATEGORIES[int(arg)]
+        wallet = BUSINESS if cat in parsing.BUSINESS_CATS else d["wallet"]
+        d = set_draft(c, step="amount", kind="exp", cat=cat, wallet=wallet, mid=d["mid"])
+    elif act == "w":
+        d["wallet"], d["t"] = arg, time.time()
+    elif act == "back":
+        d = set_draft(c, step="cat", kind="exp", wallet=d["wallet"], mid=d["mid"])
+    t, k = draft_view(d)
+    try:
+        await q.edit_message_text(t, parse_mode="HTML", reply_markup=k)
+    except BadRequest as e:
+        if "not modified" not in str(e).lower():
+            raise
+    await q.answer()
 
 
 # ---------- текст ----------
@@ -387,10 +675,15 @@ async def text(u: Update, c):
     msg = u.message
     t = (msg.text or msg.caption or "").strip()
     if t in BUTTONS:
+        clear_draft(c)  # другая кнопка меню — незаконченная запись отменяется
         return await BUTTONS[t](u, c)
 
-    # ответ на запись бота: только сумма → исправить сумму, слова → «на что потрачено»
     rep = msg.reply_to_message
+    d = get_draft(c)
+    if d and not (rep and rep.message_id != d.get("mid")) and await draft_text(msg, c, d, t):
+        return
+
+    # ответ на запись бота: только сумма → исправить сумму, слова → «на что потрачено»
     if rep and rep.from_user and rep.from_user.is_bot:
         tx_id = ledger.meta_get(f"msg:{rep.message_id}")
         row = ledger.get(int(tx_id)) if tx_id else None
@@ -435,11 +728,20 @@ async def why(u, c):
         return
     rows = ledger.unexplained(ledger.now() - dt.timedelta(days=7), limit=15)
     if not rows:
-        return await u.message.reply_text("👍 У всех расходов за неделю есть пояснение.")
-    await u.message.reply_text(f"❓ Без пояснения: {len(rows)}. Ответьте (reply) на каждое — на что потрачено.")
+        return await u.effective_message.reply_text("👍 У всех расходов за неделю есть пояснение.")
+    await u.effective_message.reply_text(f"❓ Без пояснения: {len(rows)}. Ответьте (reply) на каждое — на что потрачено.")
     for r in rows:
-        sent = await u.message.reply_text(core.describe(r), reply_markup=tx_kb(r))
+        sent = await u.effective_message.reply_text(core.describe(r), reply_markup=tx_kb(r))
         ledger.meta_set(f"msg:{sent.message_id}", str(r["id"]))
+
+
+BUTTONS = {"➕ Расход": add_expense, "➕ Доход": add_income, "📊 Дашборд": dash, "📋 История": history,
+           "❓ На что?": why, "🎯 Лимиты": limits, "💳 Карты": cards_cmd, "⚙️ Ещё": more,
+           # кнопки старого меню — пока у кого-то не обновилась клавиатура
+           "📅 Сегодня": today, "🗓 Неделя": week, "📆 Месяц": month, "↩️ Отменить": undo,
+           "↩️ Отменить последнее": undo, "❓ Помощь": help_cmd}
+MENU_ACTIONS = {"today": today, "week": week, "month": month, "find": ask_find, "undo": undo, "export": export,
+                "web": web_link, "apple": apple, "sms": sms, "status": status, "help": help_cmd}
 
 
 # ---------- чеки soliq.uz ----------
@@ -506,6 +808,8 @@ async def cb(u: Update, c):
     if not core.is_owner(q.from_user.id):
         return await q.answer("Нет доступа")
     act, _, rest = q.data.partition(":")
+    if act in ("add", "hist", "lim", "menu"):
+        return await menu_cb(q, u, c, rest)
     if act == "rep":
         period, w = rest.split(":")
         wallet = None if w == "all" else w
@@ -542,7 +846,8 @@ async def cb(u: Update, c):
         await q.edit_message_text(f"🗑 Удалено: {core.describe(row)}", reply_markup=delete_tx(row))
     elif act == "cats":
         cats = parsing.ALL_CATEGORIES
-        rows = [[(cats[i], f"set:{tx_id}:{i}") for i in range(r, min(r + 2, len(cats)))] for r in range(0, len(cats), 2)]
+        rows = [[(cat_label(cats[i]), f"set:{tx_id}:{i}") for i in range(r, min(r + 2, len(cats)))]
+                for r in range(0, len(cats), 2)]
         rows.append([("← Назад", f"back:{tx_id}")])
         await q.edit_message_reply_markup(kb(rows))
     elif act == "back":
@@ -636,7 +941,7 @@ async def catch_up(c: ContextTypes.DEFAULT_TYPE):
 
 
 COMMANDS = [("today", "Итог за сегодня"), ("week", "Последние 7 дней"), ("month", "Этот месяц"),
-            ("dash", "Дашборд картинкой"), ("web", "Веб-дашборд (Tailscale)"), ("cards", "Карты и остатки"), ("why", "Расходы без пояснения"),("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
+            ("dash", "Дашборд картинкой"), ("web", "Веб-дашборд (Tailscale)"), ("cards", "Карты и остатки"), ("why", "Расходы без пояснения"), ("menu", "Показать меню"), ("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
             ("limits", "Все лимиты"), ("undo", "Удалить последнюю запись"), ("export", "Скачать CSV для Excel"),
             ("apple", "Настроить Apple Pay"), ("sms", "SMS банка, Alliance Pay, Payme"),("status", "Адреса сервера"), ("help", "Как пользоваться")]
 
@@ -646,6 +951,14 @@ async def post_init(app: Application):
         await app.bot.set_my_commands([BotCommand(n, d) for n, d in COMMANDS])
     except Exception as e:  # noqa: BLE001 — нет интернета при старте не должно мешать запуску
         log.warning("меню команд не обновлено: %s", e)
+    owner = core.owner_id()
+    if owner and ledger.meta_get("menu_version") != MENU_VERSION:  # новое меню внизу — показать один раз
+        try:
+            menu_help = HELP.split("\n\n")[0].split("\n", 1)[1]  # блок «Меню внизу» из справки
+            await app.bot.send_message(owner, "🆕 Обновил меню внизу:\n" + menu_help, reply_markup=MENU)
+            ledger.meta_set("menu_version", MENU_VERSION)
+        except Exception as e:  # noqa: BLE001
+            log.warning("новое меню не отправлено: %s", e)
 
 
 async def trace(u: Update, c):
@@ -677,7 +990,8 @@ def main():
            .media_write_timeout(60).pool_timeout(10).post_init(post_init).build())
     for name, fn in [("start", start), ("help", help_cmd), ("today", today), ("week", week), ("month", month),
                      ("dash", dash), ("web", web_link), ("status", status), ("undo", undo), ("export", export), ("find", find),
-                     ("limit", limit), ("limits", limits), ("apple", apple), ("sms", sms), ("cards", cards_cmd), ("why", why)]:
+                     ("limit", limit), ("limits", limits), ("apple", apple), ("sms", sms), ("cards", cards_cmd), ("why", why), ("menu", show_menu),
+                     ("history", history)]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(MessageHandler(filters.ALL, trace), group=-1)
     app.add_handler(CallbackQueryHandler(cb))

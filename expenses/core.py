@@ -248,13 +248,15 @@ def _remember_cards(p: parsing.Parsed) -> None:
         ledger.card_seen(p.cards[0], p.brand, p.balance)
 
 
-def record(p: parsing.Parsed, source: str, raw: str = "", ts=None, check_dup: bool = True):
-    """Сохраняет запись. Возвращает (row | None, duplicate: bool)."""
+def record(p: parsing.Parsed, source: str, raw: str = "", ts=None, check_dup: bool = True,
+           keep_category: bool = False):
+    """Сохраняет запись. Возвращает (row | None, duplicate: bool).
+    keep_category — категорию выбрали кнопкой: не подменять запомненной для магазина."""
     _remember_cards(p)  # остаток обновляем даже для дубликата (Apple Pay уже записал покупку, SMS принесла баланс)
     if check_dup and ledger.is_duplicate(p.amount, p.kind, source):
         return None, True
     cat, wallet = p.category, p.wallet
-    l_cat, l_wal = ledger.learned(p.merchant)
+    l_cat, l_wal = (None, None) if keep_category else ledger.learned(p.merchant)
     if p.kind == "exp":
         if l_cat:
             cat = l_cat
