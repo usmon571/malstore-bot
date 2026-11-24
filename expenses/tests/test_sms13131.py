@@ -45,6 +45,39 @@ class Parse(unittest.TestCase):
         self.assertEqual(p.parse_bank(REFUND).kind, "inc")
 
 
+class Uzcard5800(unittest.TestCase):
+    PAY = "To'lov: IYB VISA SUM P2P, UZ,24.11.26 17:03,karta ***0068. Miqdor:5000.00 UZS, Balans:120000.00 UZS"
+    TOPUP = "To'ldirish: UZCARD P2P, UZ,24.11.26 16:00,karta ***0068. Miqdor:200000.00 UZS, Balans:320000.00 UZS"
+    SHOP = "Xarid: KORZINKA YUNUSOBOD, TOSHKENT,24.11.26 16:10,karta ***0068. Miqdor:45000.00 UZS, Balans:75000.00 UZS"
+
+    def test_payment(self):
+        r = p.parse_bank(self.PAY)
+        self.assertEqual((r.kind, r.amount, r.category, r.merchant), ("exp", 5000, "Переводы", "IYB VISA SUM P2P"))
+        self.assertEqual((r.cards, r.brand, r.balance), (("0068",), "", 120000))   # VISA — получатель, не наша карта
+        self.assertEqual(p.sms_time(self.PAY, dt.datetime(2026, 11, 24, 17, 10)), dt.datetime(2026, 11, 24, 17, 3))
+
+    def test_topup_is_income(self):
+        r = p.parse_bank(self.TOPUP)
+        self.assertEqual((r.kind, r.amount, r.merchant), ("inc", 200000, "UZCARD P2P"))
+
+    def test_shop(self):
+        r = p.parse_bank(self.SHOP)
+        self.assertEqual((r.kind, r.category, r.merchant), ("exp", "Еда", "KORZINKA YUNUSOBOD"))
+
+    def test_kartaga_otkazma_is_income(self):
+        for s in ("Kartaga o'tkazma: IYB VISA SUM P2P, UZ,24.11.26 17:08,karta ***0068. Miqdor:2000.00 UZS "
+                  "Qoldiq:2000.00 UZS",
+                  "Kartaga o‘tkazma: NAVOIY SH., IPAK YULI AI, UZ,24.11.26 16:58,karta ***0068. Miqdor:2000.00 UZS"):
+            r = p.parse_bank(s)
+            self.assertEqual((r.kind, r.amount, r.cards), ("inc", 2000, ("0068",)), s)
+        self.assertEqual(p.parse_bank("Kartaga o'tkazma: NAVOIY SH., IPAK YULI AI, UZ,24.11.26 16:58,karta ***0068. "
+                                      "Miqdor:2000.00 UZS").merchant, "NAVOIY SH")
+
+    def test_brand_word_inside_shop_name_kept(self):
+        r = p.parse_bank("HUMOCARD *5789: oplata 5000.00 UZS; IYB NAVOIY HUMO 2 UZ; 26-11-24 17:01; balans: 95000.00 UZS")
+        self.assertEqual((r.merchant, r.brand), ("IYB NAVOIY HUMO 2 UZ", "Humo"))
+
+
 class Flow(unittest.TestCase):
     def setUp(self):
         self._db, self._now = ledger.DB_PATH, ledger.now
@@ -68,6 +101,34 @@ class Flow(unittest.TestCase):
         text, silent = self.sent[-1]
         self.assertIn("На что?", text)
         self.assertFalse(silent)                       # вопрос — со звуком
+
+    def test_humo_to_uzcard_is_own_transfer(self):
+        # 17:01 с Humo *5789 ушло 5000 («oplata»), в 17:01 на Uzcard *0068 пришло 5000 — это перевод себе
+        out = ("HUMOCARD *5789: oplata 5000.00 UZS; IYB NAVOIY HUMO 2 UZ; 26-11-24 15:01; balans: 43172.00 UZS")
+        inc = ("Kartaga o'tkazma: NAVOIY SH., IPAK YULI AI, UZ,24.11.26 15:01,karta ***0068. Miqdor:5000.00 UZS "
+               "Qoldiq:5000.00 UZS")
+        core.ingest_text(out, "sms")
+        first = ledger.last_id()
+        self.assertEqual(ledger.get(first)["kind"], "exp")
+        core.ingest_text(inc, "sms")
+        self.assertEqual((ledger.get(first)["kind"], ledger.get(ledger.last_id())["kind"]), ("move", "move"))
+        self.assertEqual(ledger.summary("today", ref=NOW)["expense"], 0)
+
+    def test_shop_payment_and_later_income_not_paired(self):
+        core.ingest_text(SHOP, "sms")                                   # покупка в Korzinka с *5789 в 13:05
+        shop = ledger.last_id()
+        core.ingest_text("Kartaga o'tkazma: AKMAL P2P, UZ,24.11.26 13:12,karta ***0068. Miqdor:45000.00 UZS", "sms")
+        self.assertEqual(ledger.get(shop)["kind"], "exp")                # 7 минут — уже не одна операция
+        self.assertEqual(ledger.get(ledger.last_id())["kind"], "inc")
+
+    def test_mark_own_transfer_pairs_any_category(self):
+        core.ingest_text(SHOP, "sms")
+        shop = ledger.get(ledger.last_id())
+        core.ingest_text("Kartaga o'tkazma: AKMAL P2P, UZ,24.11.26 13:12,karta ***0068. Miqdor:45000.00 UZS", "sms")
+        core.mark_own_transfer(ledger.get(ledger.last_id()))            # кнопка «🔁 Перевод между моими картами»
+        self.assertEqual(ledger.get(shop["id"])["kind"], "move")
+        core.unmark_own_transfer(ledger.get(shop["id"]))                # «Это не мой перевод» — обе обратно
+        self.assertEqual(ledger.get(shop["id"])["kind"], "exp")
 
     def test_otp_skipped(self):
         ok, msg = core.ingest_text(OTP, "sms")

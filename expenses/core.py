@@ -227,7 +227,7 @@ def is_transferish(row) -> bool:
 def mark_own_transfer(row) -> object:
     """Пометить запись (и вторую половину перевода, если есть) как перевод между своими картами."""
     ledger.set_kind(row["id"], "move")
-    pair = ledger.transfer_pair(row)
+    pair = ledger.transfer_pair(row, any_category=True)  # человек сам сказал «это мой перевод»
     if pair:
         ledger.set_kind(pair["id"], "move")
     for last4 in parsing.cards_in(row["raw"] or ""):  # карты из такого SMS — тоже свои
@@ -265,12 +265,29 @@ def record(p: parsing.Parsed, source: str, raw: str = "", ts=None, check_dup: bo
             wallet = l_wal
     tx_id = ledger.add(p.amount, p.kind, cat, p.merchant, p.note, source, raw, wallet, p.days_ago, ts=ts or p.ts)
     row = ledger.get(tx_id)
-    if source != "manual" and is_transferish(row):
+    if source != "manual":
         own = ledger.own_cards()
-        # 1) в SMS обе карты свои; 2) пришла вторая половина перевода (та же сумма, ±15 минут)
-        if (len(p.cards) >= 2 and all(c in own for c in p.cards)) or ledger.transfer_pair(row):
+        # 1) в SMS обе карты свои; 2) пришла вторая половина перевода (та же сумма, ±15 минут);
+        # 3) ушло с одной своей карты и пришло на другую свою — даже если банк назвал списание «oplata»
+        if is_transferish(row) and ((len(p.cards) >= 2 and all(c in own for c in p.cards)) or ledger.transfer_pair(row)):
+            row = mark_own_transfer(row)
+        elif _between_own_cards(row, p, own):
             row = mark_own_transfer(row)
     return row, False
+
+
+def _between_own_cards(row, p: parsing.Parsed, own: set) -> bool:
+    """Списание с одной своей карты и приход на другую свою: та же сумма, ±5 минут, обе SMS банка, приход — перевод.
+    Окно короче обычного: списание тут может выглядеть как покупка, а перевод себе доходит за минуту-две."""
+    if row["kind"] not in ("exp", "inc") or not p.cards:
+        return False
+    pair = ledger.transfer_pair(row, minutes=5, any_category=True)
+    if not pair or pair["source"] != "sms":
+        return False
+    theirs = set(parsing.cards_in(pair["raw"] or ""))
+    mine = set(p.cards)
+    inc_raw = (row["raw"] if row["kind"] == "inc" else pair["raw"]) or ""
+    return bool(theirs) and not (theirs & mine) and (theirs | mine) <= own and parsing.is_transfer_text(inc_raw)
 
 
 # ---------- чеки soliq.uz ----------
@@ -433,7 +450,8 @@ def ingest_receipt(link: str) -> tuple[bool, str]:
 def ingest_text(text: str, source: str) -> tuple[bool, str]:
     """Автоматический вход (Shortcuts Apple Pay / SMS): парсит, пишет, уведомляет владельца в Telegram."""
     if source == "sms" and not parsing.is_transaction(text):
-        log.info("SMS пропущена: не операция (код, реклама)")
+        # цифры скрыты: в коде подтверждения они секретные, а слов хватит, чтобы понять, что пришло
+        log.info("SMS пропущена: не операция (код, реклама): %s", re.sub(r"\d", "#", text)[:80] or "(пусто)")
         return True, "не операция — пропущено"
     p = parsing.parse_bank(text, usd_rate())
     if not p:

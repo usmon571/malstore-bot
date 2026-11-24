@@ -168,12 +168,13 @@ def set_kind(tx_id: int, kind: str) -> None:
         c.execute("UPDATE tx SET kind=? WHERE id=?", (kind, tx_id))
 
 
-def transfer_pair(row, minutes: int = 15):
-    """Вторая половина своего перевода: та же сумма, обратное направление, рядом по времени (SMS обеих карт)."""
+def transfer_pair(row, minutes: int = 15, any_category: bool = False):
+    """Вторая половина своего перевода: та же сумма, обратное направление, рядом по времени (SMS обеих карт).
+    any_category — расходная половина может быть не «Переводы» (банк пишет «oplata» и при переводе на свою карту)."""
     other = "inc" if row["kind"] == "exp" else "exp"
     ts = datetime.strptime(row["ts"], FMT)
     lo, hi = (ts - timedelta(minutes=minutes)).strftime(FMT), (ts + timedelta(minutes=minutes)).strftime(FMT)
-    cat_rule = "category='Переводы'" if other == "exp" else "1=1"
+    cat_rule = "category='Переводы'" if other == "exp" and not any_category else "1=1"
     with _lock, _conn() as c:
         return c.execute(f"SELECT * FROM tx WHERE id!=? AND amount=? AND kind=? AND {cat_rule} AND ts BETWEEN ? AND ? "
                          "AND source!='manual' ORDER BY ABS(julianday(ts)-julianday(?)) LIMIT 1",

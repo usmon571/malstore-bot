@@ -47,10 +47,11 @@ ALL_CATEGORIES = list(CATEGORIES) + [OTHER, INCOME_CAT]
 
 INCOME_WORDS = ("зарплат", "получил", "пришло", "доход", "зачисл", "пополнен", "popolnenie", "zachislenie", "kirim",
                 "tushum", "received", "credit", "deposit", "поступлен", "возврат", "vozvrat", "refund", "cashback",
-                "кэшбэк", "перевод от", "➕", "продажа", "tushdi", "tushum", "qabul qilindi", "hisobga")
+                "кэшбэк", "перевод от", "➕", "продажа", "tushdi", "tushum", "qabul qilindi", "hisobga",
+                "to'ldirish", "toldirish", "to'ldirildi", "kiritildi", "kartaga o'tkazma", "kartaga otkazma")
 EXPENSE_WORDS = ("pokupka", "oplata", "spisanie", "списан", "оплата", "покупка", "платеж", "платёж", "purchase",
                  "payment", "debit", "chiqim", "to'lov", "tolov", "xarid", "snyatie", "снятие", "withdraw", "➖",
-                 "yechildi", "yechib olindi", "hisobdan", "to'landi", "tolandi", "списание")
+                 "yechildi", "yechib olindi", "hisobdan", "to'landi", "tolandi", "списание", "kartadan")
 # отмена / возврат покупки — деньги вернулись, даже если в SMS есть «oplata»
 REFUND_WORDS = ("otmena", "отмена", "vozvrat", "возврат", "refund", "reversal", "bekor qilindi", "qaytarildi")
 # коды подтверждения и прочие не-операции от банка
@@ -165,10 +166,11 @@ _BAL_WORDS = r"balans|balance|баланс|остаток|ostatok|qoldiq|dostupn
 _CUR = r"(UZS|SUM|СУМОВ|СУМ|СЎМ|SO['ʻ‘’]?M|SOM|USD|\$|EUR|€|RUB|₽)"
 _BAL = re.compile(rf"(?:{_BAL_WORDS})[^\d\n]{{0,12}}(?:{NUM})\s*(?:{_CUR}(?!\w)|\w{{0,4}})", re.I)
 _AMT_CUR = re.compile(rf"(?:{_CUR}\s*({NUM}))|(?:({NUM})\s*{_CUR}(?!\w))", re.I)
-_CARD = re.compile(r"(?<!\w)(?:humo(?:card)?|uzcard|visa|mastercard|master|mir|карта|karta|card|kartadan|kartaga)(?!\w)[\s*•x\d\-]*", re.I)
+_CARD = re.compile(r"(?<!\w)(?:humo(?:card)?|uzcard|visa|mastercard|master|mir|карта|karta|card|kartadan|kartaga)(?!\w)"
+                   r"(?=\s*(?:[*•]|\d{4}|:|$|(?:humo|uzcard|visa|master|mir)(?!\w)))[\s*•x\d\-]*", re.I | re.M)
 _MASK = re.compile(r"[*•]{1,6}\s*\d{4}|\d{4,6}[*•x]{2,}\d{2,4}", re.I)
 _PREFIX = re.compile(r"^\s*(?:pokupka|oplata|purchase|payment|оплата|покупка|платеж|платёж|списание|spisanie|xarid|"
-                     r"to'lov|tolov|chiqim|merchant|магазин|do'kon|joy|место|продавец|в|v|at|to)(?!\w)\s*[:\-@]?\s*", re.I)
+                     r"karta(?:ga|dan)\s+o['ʻ‘’]?tkazma|to'lov|tolov|to'ldirish|toldirish|o'tkazma|otkazma|perevod|popolnenie|chiqim|merchant|магазин|do'kon|joy|место|продавец|в|v|at|to)(?!\w)\s*[:\-@]?\s*", re.I)
 _DATE = re.compile(r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}:\d{2}(?::\d{2})?")
 _SPLIT = re.compile(r"[,;\n|]|\.\s")
 _LEGAL = re.compile(r"^(?:ooo|ооо|mchj|xk|ip|ип|llc|чп)\s+|\s+(?:ooo|mchj|llc)$", re.I)
@@ -187,15 +189,15 @@ def extract_merchant(text: str) -> str:
     # Humo 13131: «IYB VISA SUM P2P>Tas» — описание перевода от банка, оставляем как есть (иначе VISA вырежется как карта)
     for seg in _SPLIT.split(_symbols_to_breaks(text)):
         if re.search(r"(?<![a-z])p2p(?![a-z])", seg, re.I) and not _AMT_CUR.search(seg) and not _BAL.search(seg):
-            seg = re.sub(r"\s+", " ", seg).strip(" .:*-–—#№")
+            seg = _PREFIX.sub("", re.sub(r"\s+", " ", seg).strip(" .:*-–—#№")).strip(" .:*-–—#№")
             if len(re.findall(r"[^\W\d_]", seg)) >= 3:
                 return seg
     t = _symbols_to_breaks(text)
     t = _BAL.sub(" ", t)
     t = _AMT_CUR.sub(" ", t)
     t = _DATE.sub(" ", t)
+    t = _CARD.sub(" ", t)   # до маски: «HUMO *0912» — подпись карты узнаём по «*» после неё
     t = _MASK.sub(" ", t)
-    t = _CARD.sub(" ", t)
     fallback = ""
     for seg in _SPLIT.split(t):
         seg = _PREFIX.sub("", _PREFIX.sub("", seg.strip(" .:*-–—#№"))).strip(" .:*-–—#№")
@@ -247,7 +249,14 @@ def cards_in(text: str) -> tuple:
 
 
 def brand_in(text: str) -> str:
+    """Платёжная система карты. Сначала — подпись у самой карты («HUMOCARD *5789»); в 5800 карта без подписи
+    («karta ***0068»), и «VISA» в «IYB VISA SUM P2P» — это получатель, а не наша карта."""
     t = (text or "").lower()
+    for key, name in _BRANDS:
+        if re.search(rf"(?<![a-z]){key}(?:card)?(?![a-z])\W{{0,4}}[*•]", t):
+            return name
+    if re.search(r"(?<![a-zа-я])(?:karta|карта|card)\W{0,3}[*•]", t):
+        return ""
     return next((name for key, name in _BRANDS if re.search(rf"(?<![a-z]){key}(?:card)?(?![a-z])", t)), "")
 
 
@@ -288,9 +297,19 @@ def sms_time(text: str, now: datetime | None = None) -> datetime | None:
     return min(best, now) if best else None
 
 
+def lower(text: str) -> str:
+    """Нижний регистр и один вид апострофа: o‘tkazma, oʻtkazma, o’tkazma → o'tkazma."""
+    return re.sub(r"[ʻ‘’`´]", "'", (text or "").lower())
+
+
+def is_transfer_text(text: str) -> bool:
+    low = lower(text)
+    return any(w in low for w in TRANSFER_WORDS + ("kartaga", "popolnenie", "пополнен", "to'ldirish"))
+
+
 def is_transaction(text: str) -> bool:
     """SMS банка — это операция? Коды подтверждения и реклама не записываются."""
-    low = (text or "").lower()
+    low = lower(text)
     if not _AMT_CUR.search(_BAL.sub(" ", _symbols_to_breaks(text or ""))):
         return False
     money_word = any(w in low for w in EXPENSE_WORDS + INCOME_WORDS + TRANSFER_WORDS + REFUND_WORDS)
@@ -315,7 +334,7 @@ def parse_bank(text: str, usd_rate: float = 12500) -> Parsed | None:
     amount, cur = got
     if amount <= 0:
         return None
-    low = text.lower()
+    low = lower(text)
     inc = any(w in low for w in REFUND_WORDS) or (is_income(low) and not any(w in low for w in EXPENSE_WORDS))
     merchant = extract_merchant(text)
     if inc:

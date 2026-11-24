@@ -59,6 +59,7 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         qs = parse_qs(u.query)
         if not self._auth(qs):
+            log.warning("приём: неверный ключ (%s)", u.path)
             return self._send(401, b'{"error":"unauthorized"}')
         n = min(int(self.headers.get("Content-Length") or 0), 20000)
         body = self.rfile.read(n).decode("utf-8", "replace")
@@ -81,6 +82,8 @@ class H(BaseHTTPRequestHandler):
                 pass
             link = receipt.find_link(text) or receipt.find_link(body)
             ok, msg = core.ingest_receipt(link) if link else core.ingest_text(text, source)
+            # без ключа и без текста SMS: видно, что iPhone достучался и чем кончилось
+            log.info("приём %s: %s симв. → %s", source, len(text.strip()), msg[:60])
             return self._send(200 if ok else 422, json.dumps({"ok": ok, "result": msg}, ensure_ascii=False).encode())
         self._send(404, b'{"error":"not found"}')
 
