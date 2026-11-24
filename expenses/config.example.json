@@ -1,9 +1,0 @@
-{
-  "_izoh": "Скопируйте в config.json. Токен — НОВЫЙ бот от @BotFather (не токен malstore-bot).",
-  "bot_token": "ТОКЕН_ОТ_BOTFATHER",
-  "owner_ids": [],
-  "port": 8090,
-  "public_url": "",
-  "secret": "",
-  "usd_rate": 12500
-}

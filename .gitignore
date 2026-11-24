@@ -12,11 +12,3 @@ translation_cache.json
 poizon_session.json
 bot.log
 login_screen.png
-
-# Учёт расходов
-expenses/config.json
-expenses/expenses.db
-expenses/expenses.log
-expenses/backups/
-expenses/expenses.log.*
-expenses/crash.log
