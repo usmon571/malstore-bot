@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 # 1 500 000 | 1,500,000.00 | 50.000,00 | 15,5 | 15000
 NUM = r"\d{1,3}(?:[  ,.]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d+)?"
@@ -48,6 +49,11 @@ INCOME_WORDS = ("зарплат", "получил", "пришло", "доход"
 EXPENSE_WORDS = ("pokupka", "oplata", "spisanie", "списан", "оплата", "покупка", "платеж", "платёж", "purchase",
                  "payment", "debit", "chiqim", "to'lov", "tolov", "xarid", "snyatie", "снятие", "withdraw", "➖",
                  "yechildi", "yechib olindi", "hisobdan", "to'landi", "tolandi", "списание")
+# отмена / возврат покупки — деньги вернулись, даже если в SMS есть «oplata»
+REFUND_WORDS = ("otmena", "отмена", "vozvrat", "возврат", "refund", "reversal", "bekor qilindi", "qaytarildi")
+# коды подтверждения и прочие не-операции от банка
+OTP_WORDS = ("kod", "код", "code", "parol", "пароль", "tasdiq", "подтвержд", "podtverzhd", "nikomu", "никому",
+             "hech kimga", "otp")
 TRANSFER_WORDS = ("perevod", "перевод", "p2p", "o'tkazma", "otkazma", "o'tkazildi")
 # платёжные приложения: Alliance Pay (Asia Alliance Bank), Payme, Click, Uzum, Paynet
 APPS = ("alliance", "aab", "payme", "paycom", "click", "uzum", "paynet", "apelsin", "oson")
@@ -71,6 +77,7 @@ class Parsed:
     cards: tuple = ()          # последние 4 цифры всех карт в SMS
     brand: str = ""            # Humo / Uzcard / Visa / Mastercard
     balance: int | None = None # остаток на карте после операции
+    ts: datetime | None = None # время операции из SMS (если указано)
 
 
 def to_number(tok: str) -> float:
@@ -169,6 +176,12 @@ _KEYWORDS = {w for w in INCOME_WORDS + EXPENSE_WORDS + TRANSFER_WORDS} | {
 
 
 def extract_merchant(text: str) -> str:
+    # Humo 13131: «IYB VISA SUM P2P>Tas» — описание перевода от банка, оставляем как есть (иначе VISA вырежется как карта)
+    for seg in _SPLIT.split(_symbols_to_breaks(text)):
+        if re.search(r"(?<![a-z])p2p(?![a-z])", seg, re.I) and not _AMT_CUR.search(seg) and not _BAL.search(seg):
+            seg = re.sub(r"\s+", " ", seg).strip(" .:*-–—#№")
+            if len(re.findall(r"[^\W\d_]", seg)) >= 3:
+                return seg
     t = _symbols_to_breaks(text)
     t = _BAL.sub(" ", t)
     t = _AMT_CUR.sub(" ", t)
@@ -241,6 +254,43 @@ def balance_in(text: str) -> int | None:
         return None
 
 
+_TS_YMD = re.compile(r"(?<!\d)(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})")             # 26-11-24 14:51 (Humo)
+_TS_DMY = re.compile(r"(?<!\d)(\d{1,2})[./](\d{1,2})[./](\d{2}|\d{4})\s+(\d{1,2}):(\d{2})")  # 24.11.26 14:51
+
+
+def sms_time(text: str, now: datetime | None = None) -> datetime | None:
+    """Время операции из SMS. «26-11-24» бывает и ГГ-ММ-ДД, и ДД-ММ-ГГ — берём вариант ближе к сегодня.
+    Возвращает None, если даты нет или она неправдоподобна (в будущем или старше 60 дней)."""
+    now = now or datetime.now()
+    found = []
+    for m in _TS_YMD.finditer(text or ""):
+        a, b, c, hh, mm = (int(x) for x in m.groups())
+        found += [(2000 + a, b, c, hh, mm), (2000 + c, b, a, hh, mm)]
+    for m in _TS_DMY.finditer(text or ""):
+        d, mo, y, hh, mm = (int(x) for x in m.groups())
+        found.append((y + 2000 if y < 100 else y, mo, d, hh, mm))
+    best = None
+    for y, mo, d, hh, mm in found:
+        try:
+            t = datetime(y, mo, d, hh, mm)
+        except ValueError:
+            continue
+        if now - timedelta(days=60) <= t <= now + timedelta(hours=1) and (best is None or abs(now - t) < abs(now - best)):
+            best = t
+    return min(best, now) if best else None
+
+
+def is_transaction(text: str) -> bool:
+    """SMS банка — это операция? Коды подтверждения и реклама не записываются."""
+    low = (text or "").lower()
+    if not _AMT_CUR.search(_BAL.sub(" ", _symbols_to_breaks(text or ""))):
+        return False
+    money_word = any(w in low for w in EXPENSE_WORDS + INCOME_WORDS + TRANSFER_WORDS + REFUND_WORDS)
+    if any(re.search(_word(w), low) for w in OTP_WORDS) and not money_word:
+        return False
+    return bool(cards_in(text)) or money_word
+
+
 def parse_bank(text: str, usd_rate: float = 12500) -> Parsed | None:
     """Уведомление банка / Apple Pay. Сумма, приход/расход, магазин. Баланс игнорируется."""
     got = amount_in_text(text, usd_rate)
@@ -258,14 +308,14 @@ def parse_bank(text: str, usd_rate: float = 12500) -> Parsed | None:
     if amount <= 0:
         return None
     low = text.lower()
-    inc = is_income(low) and not any(w in low for w in EXPENSE_WORDS)
+    inc = any(w in low for w in REFUND_WORDS) or (is_income(low) and not any(w in low for w in EXPENSE_WORDS))
     merchant = extract_merchant(text)
     if inc:
         cat = INCOME_CAT
     else:
         cat = guess_category(merchant) or guess_category(text) or OTHER
     return Parsed(amount, "inc" if inc else "exp", cat, merchant=merchant[:60], currency=cur, wallet=wallet_for(cat),
-                  cards=cards_in(text), brand=brand_in(text), balance=balance_in(text))
+                  cards=cards_in(text), brand=brand_in(text), balance=balance_in(text), ts=sms_time(text))
 
 
 def fmt(n: int) -> str:

@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -46,10 +47,13 @@ HELP = (
     "• Перешлите SMS/уведомление Humo, Uzcard или банка — разберу сам. Автоматически (Alliance Pay, Payme) — /sms\n"
     "• Apple Pay — один раз настройте /apple, дальше всё автоматически\n"
     "• 🧾 Фото QR-кода с чека (soliq.uz) или ссылка из него — запишу магазин, сумму и товары\n\n"
-    "<b>Исправить</b>: кнопки под записью, или ответьте (reply) на запись новой суммой.\n\n"
+    "<b>Исправить</b>: кнопки под записью, или ответьте (reply) на запись новой суммой.\n"
+    "<b>На что?</b> На расход из SMS / Apple Pay бот спросит — ответьте (reply) парой слов: "
+    "<code>обед</code>, <code>долг Акмалю</code>. Пропущенные — /why\n\n"
     "<b>Команды</b>\n/today /week /month — отчёты\n/dash — дашборд с графиками\n"
     "/find корзинка — поиск\n/limit еда 2000000 — лимит в месяц (0 — снять), /limits\n"
     "/cards — карты и остатки (переводы между своими картами — не расход)\n"
+    "/why — расходы без пояснения «на что»\n"
     "/undo — удалить последнюю · /export — Excel/CSV\n/apple — Apple Pay · /sms — SMS банка · /status — адреса сервера"
 )
 
@@ -320,14 +324,17 @@ async def sms(u, c):
         "У Alliance Pay и Payme нет открытого API, но каждая оплата с карты Humo/Uzcard приходит SMS от банка — "
         "её и будем пересылать. Платежи через Payme тоже приходят этой SMS.\n\n"
         "1. iPhone → <b>Команды</b> → <b>Автоматизация</b> → «+» → <b>Сообщение</b>.\n"
-        "2. <b>Отправитель</b> → выберите номер, с которого приходят SMS о покупках "
-        "(например <code>AAB</code>, <code>HUMO</code> или <code>UZCARD</code>). "
+        "2. <b>Отправитель</b> → номер, с которого приходят SMS о картах: <b>13131</b> (Humo) "
+        "и другие (<code>AAB</code>, <code>UZCARD</code>). Если номера нет в списке — сначала в «Контактах» "
+        "создайте контакт «Humo» с номером <code>13131</code>. "
         "«Запускать сразу» ✅ → <b>Далее</b> → <b>Новая пустая автоматизация</b>.\n"
         "3. Действие <b>«Получить содержимое URL»</b>:\n"
         f"   URL: <code>{url}</code>\n"
         "   Метод <b>POST</b>, Тело запроса <b>JSON</b>, поле:\n"
         "   • <code>text</code> → «Входные данные команды» → <b>Содержимое</b>\n"
-        "4. Готово. Повторите для каждого отправителя (банк, HUMO, UZCARD).\n\n"
+        "4. Готово. Повторите для каждого отправителя (13131, банк, UZCARD).\n\n"
+        "Бот читает всё от этого номера: коды подтверждения и рекламу пропускает, время берёт из SMS. "
+        "На каждый расход спросит «на что?» — ответьте (reply) парой слов, по ним он поправит категорию.\n\n"
         "Покупка из Apple Pay и та же SMS не посчитаются дважды. "
         "Без автоматизации SMS можно просто переслать сюда. Чек из Payme — скриншот QR или ссылка, как обычный чек.",
         parse_mode="HTML", disable_web_page_preview=True)
@@ -347,15 +354,21 @@ async def text(u: Update, c):
     if t in BUTTONS:
         return await BUTTONS[t](u, c)
 
-    # ответ на запись бота новой суммой → исправить сумму
+    # ответ на запись бота: только сумма → исправить сумму, слова → «на что потрачено»
     rep = msg.reply_to_message
     if rep and rep.from_user and rep.from_user.is_bot:
         tx_id = ledger.meta_get(f"msg:{rep.message_id}")
-        p = parsing.parse_manual(t)
-        if tx_id and p and ledger.get(int(tx_id)):
-            ledger.set_amount(int(tx_id), p.amount)
-            row = ledger.get(int(tx_id))
+        row = ledger.get(int(tx_id)) if tx_id else None
+        p = parsing.parse_manual(t) if row and AMOUNT_ONLY.fullmatch(t) else None
+        if p:
+            ledger.set_amount(row["id"], p.amount)
+            row = ledger.get(row["id"])
             return await msg.reply_text("✏️ Исправлено: " + core.describe(row), reply_markup=tx_kb(row))
+        if row and re.search(r"[^\W\d_]", t):
+            row = core.set_purpose(row, t)
+            sent = await msg.reply_text("📝 Записал: " + core.describe(row), reply_markup=tx_kb(row))
+            ledger.meta_set(f"msg:{sent.message_id}", str(row["id"]))
+            return
 
     link = receipt.find_link(t)
     if link:
@@ -371,8 +384,27 @@ async def text(u: Update, c):
     row, dup = core.record(p, source, t)
     if dup:
         return await msg.reply_text("♻️ Эта покупка уже пришла из Apple Pay — второй раз не считаю.")
-    sent = await msg.reply_text("✅ " + core.describe(row) + core.budget_warning(row["category"]), reply_markup=tx_kb(row))
+    ask = f"\n{core.ASK}" if core.needs_purpose(row) else ""
+    sent = await msg.reply_text("✅ " + core.describe(row) + core.budget_warning(row["category"]) + ask,
+                                reply_markup=tx_kb(row))
     ledger.meta_set(f"msg:{sent.message_id}", str(row["id"]))
+
+
+# ответ только суммой («25000», «25к», «25 000 сум») — исправить сумму; «2 кофе» — это уже пояснение
+AMOUNT_ONLY = re.compile(r"[+\-−]?\s*\d[\d\s.,]*\s*(?:к|k|тыс\.?|тысяч|млн|mln|сум|so['ʻ‘’]?m|uzs)?\.?", re.I)
+
+
+async def why(u, c):
+    """Расходы из SMS / Apple Pay за 7 дней без пояснения — каждый отдельным сообщением, чтобы ответить на него."""
+    if not await guard(u):
+        return
+    rows = ledger.unexplained(ledger.now() - dt.timedelta(days=7), limit=15)
+    if not rows:
+        return await u.message.reply_text("👍 У всех расходов за неделю есть пояснение.")
+    await u.message.reply_text(f"❓ Без пояснения: {len(rows)}. Ответьте (reply) на каждое — на что потрачено.")
+    for r in rows:
+        sent = await u.message.reply_text(core.describe(r), reply_markup=tx_kb(r))
+        ledger.meta_set(f"msg:{sent.message_id}", str(r["id"]))
 
 
 # ---------- чеки soliq.uz ----------
@@ -529,8 +561,11 @@ async def nightly(c: ContextTypes.DEFAULT_TYPE):
     else:
         period = "yesterday" if late else "today"
         bal = cards_text()
-        await c.bot.send_message(owner, "🌙 " + report(period) + (f"\n\n{bal}" if bal else ""), parse_mode="HTML",
-                                 reply_markup=report_kb(period, None))
+        start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        n = sum(1 for r in ledger.unexplained(start, 100) if r["ts"][:10] == key)
+        why_line = f"\n\n❓ Без пояснения «на что»: {n} — /why" if n else ""
+        await c.bot.send_message(owner, "🌙 " + report(period) + (f"\n\n{bal}" if bal else "") + why_line,
+                                 parse_mode="HTML", reply_markup=report_kb(period, None))
     if day.weekday() == 6:
         await c.bot.send_message(owner, "📈 Итог недели\n" + report("week", ref=day), parse_mode="HTML",
                                  reply_markup=report_kb("week", None))
@@ -549,7 +584,7 @@ async def catch_up(c: ContextTypes.DEFAULT_TYPE):
 
 
 COMMANDS = [("today", "Итог за сегодня"), ("week", "Последние 7 дней"), ("month", "Этот месяц"),
-            ("dash", "Дашборд с графиками"), ("cards", "Карты и остатки"),("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
+            ("dash", "Дашборд с графиками"), ("cards", "Карты и остатки"), ("why", "Расходы без пояснения"),("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
             ("limits", "Все лимиты"), ("undo", "Удалить последнюю запись"), ("export", "Скачать CSV для Excel"),
             ("apple", "Настроить Apple Pay"), ("sms", "SMS банка, Alliance Pay, Payme"),("status", "Адреса сервера"), ("help", "Как пользоваться")]
 
@@ -590,7 +625,7 @@ def main():
            .media_write_timeout(60).pool_timeout(10).post_init(post_init).build())
     for name, fn in [("start", start), ("help", help_cmd), ("today", today), ("week", week), ("month", month),
                      ("dash", dash), ("status", status), ("undo", undo), ("export", export), ("find", find),
-                     ("limit", limit), ("limits", limits), ("apple", apple), ("sms", sms), ("cards", cards_cmd)]:
+                     ("limit", limit), ("limits", limits), ("apple", apple), ("sms", sms), ("cards", cards_cmd), ("why", why)]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(MessageHandler(filters.ALL, trace), group=-1)
     app.add_handler(CallbackQueryHandler(cb))

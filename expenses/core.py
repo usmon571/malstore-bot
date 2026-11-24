@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets as _secrets
 import socket
 import subprocess
@@ -165,8 +166,44 @@ def describe(r) -> str:
         return f"🔁 {fmt(r['amount'])} сум · перевод между своими картами (не расход){day}"
     sign = "−" if r["kind"] == "exp" else "+"
     who = f" · {r['merchant']}" if r["merchant"] else ""
+    note = purpose_of(r)
+    why = f" · «{note[:40]}»" if note and note != r["merchant"] else ""
     icon = "💼" if r["wallet"] == parsing.BUSINESS else "👤"
-    return f"{icon} {sign}{fmt(r['amount'])} сум · {r['category']}{who}{day}"
+    return f"{icon} {sign}{fmt(r['amount'])} сум · {r['category']}{who}{why}{day}"
+
+
+# ---------- «на что потратили?» ----------
+
+ASK = "❓ На что? Ответьте на это сообщение: «обед», «долг Акмалю», «подарок маме»…"
+ASK_SOURCES = ("sms", "wallet")   # автоматические записи: из SMS и Apple Pay назначение неизвестно
+
+
+def purpose_of(r) -> str:
+    """Пояснение владельца (note без списка товаров из чека)."""
+    try:
+        note = r["note"] or ""
+    except (KeyError, IndexError):
+        return ""
+    return "" if note.startswith("🧾") else note.split(" · 🧾")[0]
+
+
+def needs_purpose(r) -> bool:
+    return r["kind"] == "exp" and r["source"] in ASK_SOURCES and not (r["note"] or "")  # чек с товарами — уже ясно
+
+
+def set_purpose(row, text: str):
+    """Ответ на «на что?»: сохранить пояснение, а если по нему понятна категория — поменять её только у этой записи."""
+    text = re.sub(r"\s+", " ", text).strip()
+    biz = any(re.search(parsing._word(t), text, re.I) for t in parsing.BUSINESS_TAGS)
+    for t in parsing.BUSINESS_TAGS:
+        text = re.sub(parsing._word(t), " ", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text).strip(" ,.;")[:100]
+    cat = parsing.guess_category(text) if row["kind"] == "exp" else None
+    wallet = parsing.BUSINESS if biz else (parsing.wallet_for(cat) if cat else None)
+    old = row["note"] or ""
+    items = old if old.startswith("🧾") else (old.split(" · ", 1)[1] if " · 🧾" in old else "")
+    ledger.set_purpose(row["id"], f"{text} · {items}" if items else text, cat, wallet)
+    return ledger.get(row["id"])
 
 
 def budget_warning(category: str) -> str:
@@ -224,7 +261,7 @@ def record(p: parsing.Parsed, source: str, raw: str = "", ts=None, check_dup: bo
             wallet = parsing.wallet_for(cat) if wallet == parsing.PERSONAL else wallet
         if l_wal:
             wallet = l_wal
-    tx_id = ledger.add(p.amount, p.kind, cat, p.merchant, p.note, source, raw, wallet, p.days_ago, ts=ts)
+    tx_id = ledger.add(p.amount, p.kind, cat, p.merchant, p.note, source, raw, wallet, p.days_ago, ts=ts or p.ts)
     row = ledger.get(tx_id)
     if source != "manual" and is_transferish(row):
         own = ledger.own_cards()
@@ -393,11 +430,15 @@ def ingest_receipt(link: str) -> tuple[bool, str]:
 
 def ingest_text(text: str, source: str) -> tuple[bool, str]:
     """Автоматический вход (Shortcuts Apple Pay / SMS): парсит, пишет, уведомляет владельца в Telegram."""
+    if source == "sms" and not parsing.is_transaction(text):
+        log.info("SMS пропущена: не операция (код, реклама)")
+        return True, "не операция — пропущено"
     p = parsing.parse_bank(text, usd_rate())
     if not p:
         return False, "сумма не найдена"
     row, dup = record(p, source, text)
     if dup:
         return True, "дубликат пропущен"
-    notify(f"✅ {describe(row)}" + budget_warning(row["category"]), row, silent=True)
+    ask = needs_purpose(row)
+    notify(f"✅ {describe(row)}" + budget_warning(row["category"]) + (f"\n{ASK}" if ask else ""), row, silent=not ask)
     return True, describe(row)

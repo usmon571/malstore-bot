@@ -219,6 +219,21 @@ def set_category(tx_id: int, category: str, wallet: str | None = None) -> None:
             _remember(c, r["merchant"], category, wallet)
 
 
+def set_purpose(tx_id: int, note: str, category: str | None = None, wallet: str | None = None) -> None:
+    """Пояснение «на что» — только для этой записи, магазин не запоминается (P2P-переводы бывают на что угодно)."""
+    with _lock, _conn() as c:
+        c.execute("UPDATE tx SET note=?, category=COALESCE(?, category), wallet=COALESCE(?, wallet) WHERE id=?",
+                  (note, category, wallet, tx_id))
+
+
+def unexplained(since: datetime, limit: int = 20) -> list:
+    """Расходы из SMS / Apple Pay без пояснения — для /why и вечернего напоминания."""
+    with _lock, _conn() as c:
+        return c.execute("SELECT * FROM tx WHERE kind='exp' AND source IN ('sms','wallet') AND ts>=? "
+                         "AND COALESCE(note,'')='' ORDER BY ts LIMIT ?",
+                         (since.strftime(FMT), limit)).fetchall()
+
+
 def set_wallet(tx_id: int, wallet: str) -> None:
     with _lock, _conn() as c:
         c.execute("UPDATE tx SET wallet=? WHERE id=?", (wallet, tx_id))
