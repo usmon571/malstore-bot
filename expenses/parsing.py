@@ -30,6 +30,8 @@ CATEGORIES = {
     "Подписки": ["netflix", "spotify", "youtube", "icloud", "apple.com", "google", "chatgpt", "openai", "claude",
                  "anthropic", "подписка", "telegram premium", "yandex plus", "kinopoisk"],
     "Развлечения": ["кино", "cinema", "kino", "игр", "game", "steam", "playstation", "театр", "концерт", "bowling", "magic city"],
+    # необязательные покупки «просто захотелось» — по назначению, а не по магазину
+    "Хотелки": ["хотелк", "захотел", "импульс", "спонтан", "просто так", "побаловать", "xohish", "хочушк"],
     "Одежда и покупки": ["одежда", "обувь", "uzum market", "uzum.uz", "wildberries", "ozon", "temu", "aliexpress",
                          "amazon", "mediapark", "texnomart", "zara", "lc waikiki", "defacto", "mall", "samarqand darvoza"],
     "Переводы": ["perevod", "перевод", "p2p", "o'tkazma", "otkazma", "transfer", "card2card"],
@@ -88,10 +90,16 @@ def to_number(tok: str) -> float:
     return float(s.replace(" ", "").replace(",", "."))
 
 
+WANTS = "Хотелки"
+# категории «по назначению»: магазин за ними не закрепляется (в Korzinka бывают и продукты, и хотелки)
+NO_LEARN = {WANTS}
+
+
 def guess_category(text: str) -> str | None:
     t = f" {text.lower()} "
-    for cat, words in CATEGORIES.items():
-        if any(w in t for w in words):
+    # «хотелка кофе» — это хотелка, а не кафе: явное слово важнее магазина
+    for cat in [WANTS] + [c for c in CATEGORIES if c != WANTS]:
+        if any(w in t for w in CATEGORIES[cat]):
             return cat
     return None
 

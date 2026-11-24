@@ -103,6 +103,29 @@ class Flow(unittest.TestCase):
         self.assertEqual(len(ledger.unexplained(NOW - dt.timedelta(days=1))), 2)
 
 
+class Wants(unittest.TestCase):
+    def setUp(self):
+        self._db = ledger.DB_PATH
+        ledger.DB_PATH = Path(tempfile.mkdtemp()) / "w.db"
+        ledger.init()
+
+    def tearDown(self):
+        ledger.DB_PATH = self._db
+
+    def test_wants_category(self):
+        self.assertIn("Хотелки", p.ALL_CATEGORIES)
+        self.assertEqual(p.guess_category("хотелка кофе"), "Хотелки")      # явное слово важнее «кофе»
+        self.assertEqual(p.guess_category("просто захотелось"), "Хотелки")
+        self.assertEqual(p.parse_manual("150к наушники хотелка").category, "Хотелки")
+        self.assertEqual(p.wallet_for("Хотелки"), "personal")
+
+    def test_wants_not_learned_for_shop(self):
+        row, _ = core.record(p.Parsed(30000, "exp", "Еда", "Korzinka"), "sms")
+        ledger.set_category(row["id"], "Хотелки", learn="Хотелки" not in p.NO_LEARN)
+        self.assertEqual(ledger.get(row["id"])["category"], "Хотелки")
+        self.assertNotEqual(ledger.learned("Korzinka")[0], "Хотелки")      # Korzinka не станет хотелкой навсегда
+
+
 class AmountOnly(unittest.TestCase):
     def test_reply_patterns(self):
         import importlib

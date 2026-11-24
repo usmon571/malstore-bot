@@ -208,14 +208,14 @@ def last_id() -> int | None:
         return r["id"] if r else None
 
 
-def set_category(tx_id: int, category: str, wallet: str | None = None) -> None:
+def set_category(tx_id: int, category: str, wallet: str | None = None, learn: bool = True) -> None:
     with _lock, _conn() as c:
         if wallet:
             c.execute("UPDATE tx SET category=?, wallet=? WHERE id=?", (category, wallet, tx_id))
         else:
             c.execute("UPDATE tx SET category=? WHERE id=?", (category, tx_id))
         r = c.execute("SELECT merchant FROM tx WHERE id=?", (tx_id,)).fetchone()
-        if r:
+        if r and learn:
             _remember(c, r["merchant"], category, wallet)
 
 

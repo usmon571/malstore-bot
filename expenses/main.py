@@ -503,7 +503,7 @@ async def cb(u: Update, c):
         cat = parsing.ALL_CATEGORIES[int(rest.split(":")[1])]
         kind_fix = cat == parsing.INCOME_CAT
         wallet = BUSINESS if cat in parsing.BUSINESS_CATS else None
-        ledger.set_category(tx_id, cat, wallet)
+        ledger.set_category(tx_id, cat, wallet, learn=cat not in parsing.NO_LEARN)
         if kind_fix != (row["kind"] == "inc"):
             with ledger._lock, ledger._conn() as con:
                 con.execute("UPDATE tx SET kind=? WHERE id=?", ("inc" if kind_fix else "exp", tx_id))
