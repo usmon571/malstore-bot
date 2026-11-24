@@ -13,10 +13,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, Update  # noqa: E402
+from telegram import (BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto,  # noqa: E402
+                      ReplyKeyboardMarkup, Update)
+from telegram.error import BadRequest  # noqa: E402
 from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, ContextTypes,  # noqa: E402
                           MessageHandler, filters)
 
+import chart  # noqa: E402
 import core  # noqa: E402
 import ledger  # noqa: E402
 import parsing  # noqa: E402
@@ -50,7 +53,7 @@ HELP = (
     "<b>Исправить</b>: кнопки под записью, или ответьте (reply) на запись новой суммой.\n"
     "<b>На что?</b> На расход из SMS / Apple Pay бот спросит — ответьте (reply) парой слов: "
     "<code>обед</code>, <code>долг Акмалю</code>. Пропущенные — /why\n\n"
-    "<b>Команды</b>\n/today /week /month — отчёты\n/dash — дашборд с графиками\n"
+    "<b>Команды</b>\n/today /week /month — отчёты\n/dash — дашборд картинкой (работает везде) · /web — веб-версия через Tailscale\n"
     "/find корзинка — поиск\n/limit еда 2000000 — лимит в месяц (0 — снять), /limits\n"
     "/cards — карты и остатки (переводы между своими картами — не расход)\n"
     "/why — расходы без пояснения «на что»\n"
@@ -176,13 +179,45 @@ async def month(u, c):
     await send_report(u, "month")
 
 
+DASH_PERIODS = [("Сегодня", "today"), ("7 дней", "week"), ("Месяц", "month"), ("Прошлый", "lastmonth")]
+DASH_WALLETS = [("Всё", "all"), (WALLET_LABEL[PERSONAL], PERSONAL), (WALLET_LABEL[BUSINESS], BUSINESS)]
+
+
+def dash_kb(period: str, w: str) -> InlineKeyboardMarkup:
+    mark = lambda on, t: ("• " + t) if on else t  # noqa: E731
+    return kb([[(mark(p == period, t), f"img:{p}:{w}") for t, p in DASH_PERIODS],
+               [(mark(x == w, t), f"img:{period}:{x}") for t, x in DASH_WALLETS],
+               [("🌐 Веб-версия (Tailscale)", "weblink:0")]])
+
+
+async def dash_image(period: str, w: str) -> bytes:
+    return await asyncio.to_thread(chart.render, period, None if w == "all" else w)
+
+
 async def dash(u, c):
+    """Дашборд картинкой прямо в Telegram — открывается откуда угодно, без Tailscale."""
     if not await guard(u):
         return
-    url = f"{core.base_url()}/?key={core.secret()}"
-    note = "" if core.tailscale_ip() or core.PUBLIC_URL else \
-        "\n\n(Сейчас работает только в домашнем Wi-Fi. Для доступа отовсюду включите Tailscale — /status)"
-    await u.message.reply_text(f"📊 Дашборд:\n{url}{note}", disable_web_page_preview=True)
+    png = await dash_image("month", "all")
+    await u.message.reply_photo(png, reply_markup=dash_kb("month", "all"))
+
+
+async def web_link(u, c):
+    if not await guard(u):
+        return
+    key = f"/?key={core.secret()}"
+    us = core.urls()
+    main_url = core.base_url()
+    text = f"📊 Дашборд:\n{main_url}{key}"
+    if main_url == us.get("tailscale"):
+        text += ("\n\nЕсли не открывается — на iPhone откройте приложение <b>Tailscale</b> и включите его "
+                 "(переключатель «Connected»).")
+    if us.get("lan") and us["lan"] != main_url:
+        text += f"\n\n🏠 В домашнем Wi-Fi (без Tailscale):\n{us['lan']}{key}"
+    if not (core.tailscale_ip() or core.PUBLIC_URL):
+        text += "\n\n(Сейчас работает только в домашнем Wi-Fi. Для доступа отовсюду включите Tailscale — /status)"
+    msg = u.message or u.callback_query.message
+    await msg.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def status(u, c):
@@ -476,6 +511,19 @@ async def cb(u: Update, c):
         wallet = None if w == "all" else w
         await q.edit_message_text(report(period, wallet), parse_mode="HTML", reply_markup=report_kb(period, wallet))
         return await q.answer()
+    if act == "img":
+        period, w = rest.split(":")
+        await q.answer("Рисую…")
+        png = await dash_image(period, w)
+        try:
+            await q.edit_message_media(InputMediaPhoto(png), reply_markup=dash_kb(period, w))
+        except BadRequest as e:  # та же кнопка ещё раз — картинка не изменилась
+            if "not modified" not in str(e).lower():
+                raise
+        return
+    if act == "weblink":
+        await q.answer()
+        return await web_link(u, c)
 
     tx_id = int(rest.split(":")[0])
     if act == "undel":
@@ -572,6 +620,10 @@ async def nightly(c: ContextTypes.DEFAULT_TYPE):
     if day.day == 1:
         await c.bot.send_message(owner, "📆 Итог месяца\n" + report("lastmonth", ref=day), parse_mode="HTML",
                                  reply_markup=report_kb("lastmonth", None))
+        try:
+            await c.bot.send_photo(owner, await asyncio.to_thread(chart.render, "lastmonth", None, day))
+        except Exception as e:  # noqa: BLE001 — картинка не важнее текста и CSV
+            log.warning("картинка месяца: %s", e)
         await c.bot.send_document(owner, ledger.export_csv("lastmonth").encode("utf-8-sig"),
                                   filename=f"rashody-{(day - dt.timedelta(days=1)):%Y-%m}.csv")
 
@@ -584,7 +636,7 @@ async def catch_up(c: ContextTypes.DEFAULT_TYPE):
 
 
 COMMANDS = [("today", "Итог за сегодня"), ("week", "Последние 7 дней"), ("month", "Этот месяц"),
-            ("dash", "Дашборд с графиками"), ("cards", "Карты и остатки"), ("why", "Расходы без пояснения"),("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
+            ("dash", "Дашборд картинкой"), ("web", "Веб-дашборд (Tailscale)"), ("cards", "Карты и остатки"), ("why", "Расходы без пояснения"),("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
             ("limits", "Все лимиты"), ("undo", "Удалить последнюю запись"), ("export", "Скачать CSV для Excel"),
             ("apple", "Настроить Apple Pay"), ("sms", "SMS банка, Alliance Pay, Payme"),("status", "Адреса сервера"), ("help", "Как пользоваться")]
 
@@ -624,7 +676,7 @@ def main():
     app = (Application.builder().token(core.BOT_TOKEN).connect_timeout(20).read_timeout(30).write_timeout(30)
            .media_write_timeout(60).pool_timeout(10).post_init(post_init).build())
     for name, fn in [("start", start), ("help", help_cmd), ("today", today), ("week", week), ("month", month),
-                     ("dash", dash), ("status", status), ("undo", undo), ("export", export), ("find", find),
+                     ("dash", dash), ("web", web_link), ("status", status), ("undo", undo), ("export", export), ("find", find),
                      ("limit", limit), ("limits", limits), ("apple", apple), ("sms", sms), ("cards", cards_cmd), ("why", why)]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(MessageHandler(filters.ALL, trace), group=-1)
