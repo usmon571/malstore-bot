@@ -48,7 +48,9 @@ class H(BaseHTTPRequestHandler):
                 period = "month"
             wallet = (qs.get("wallet") or [""])[0]
             wallet = wallet if wallet in ("personal", "business") else None
-            return self._send(200, json.dumps(ledger.summary(period, wallet), ensure_ascii=False).encode())
+            data = ledger.summary(period, wallet)
+            data["cards"] = [dict(r) for r in ledger.cards()]
+            return self._send(200, json.dumps(data, ensure_ascii=False).encode())
         if u.path == "/api/export.csv":
             return self._send(200, ledger.export_csv().encode("utf-8-sig"), "text/csv; charset=utf-8")
         self._send(404, b'{"error":"not found"}')

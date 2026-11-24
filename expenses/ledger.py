@@ -39,6 +39,9 @@ def init() -> None:
         CREATE TABLE IF NOT EXISTS merchant_cat(merchant TEXT PRIMARY KEY, category TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS budget(category TEXT PRIMARY KEY, monthly INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+        -- свои карты (из SMS банка): последние 4 цифры, остаток после последней операции
+        CREATE TABLE IF NOT EXISTS card(last4 TEXT PRIMARY KEY, brand TEXT DEFAULT '', balance INTEGER,
+                                        balance_ts TEXT, seen_ts TEXT);
         """)
         cols = {r["name"] for r in c.execute("PRAGMA table_info(tx)")}
         if "wallet" not in cols:  # миграция со старой версии
@@ -135,6 +138,57 @@ def get(tx_id: int):
 def delete(tx_id: int) -> bool:
     with _lock, _conn() as c:
         return c.execute("DELETE FROM tx WHERE id=?", (tx_id,)).rowcount > 0
+
+
+# ---------- свои карты и переводы между ними ----------
+# kind='move' — перевод между своими картами: не расход и не доход, в итоги не входит.
+
+def card_seen(last4: str, brand: str = "", balance: int | None = None) -> None:
+    ts = now().strftime(FMT)
+    with _lock, _conn() as c:
+        c.execute("INSERT INTO card(last4, brand, seen_ts) VALUES(?,?,?) ON CONFLICT(last4) DO UPDATE SET "
+                  "brand=CASE WHEN excluded.brand!='' THEN excluded.brand ELSE card.brand END, seen_ts=excluded.seen_ts",
+                  (last4, brand, ts))
+        if balance is not None:
+            c.execute("UPDATE card SET balance=?, balance_ts=? WHERE last4=?", (balance, ts, last4))
+
+
+def cards() -> list:
+    with _lock, _conn() as c:
+        return c.execute("SELECT * FROM card ORDER BY COALESCE(balance_ts, seen_ts) DESC").fetchall()
+
+
+def own_cards() -> set:
+    with _lock, _conn() as c:
+        return {r["last4"] for r in c.execute("SELECT last4 FROM card")}
+
+
+def set_kind(tx_id: int, kind: str) -> None:
+    with _lock, _conn() as c:
+        c.execute("UPDATE tx SET kind=? WHERE id=?", (kind, tx_id))
+
+
+def transfer_pair(row, minutes: int = 15):
+    """Вторая половина своего перевода: та же сумма, обратное направление, рядом по времени (SMS обеих карт)."""
+    other = "inc" if row["kind"] == "exp" else "exp"
+    ts = datetime.strptime(row["ts"], FMT)
+    lo, hi = (ts - timedelta(minutes=minutes)).strftime(FMT), (ts + timedelta(minutes=minutes)).strftime(FMT)
+    cat_rule = "category='Переводы'" if other == "exp" else "1=1"
+    with _lock, _conn() as c:
+        return c.execute(f"SELECT * FROM tx WHERE id!=? AND amount=? AND kind=? AND {cat_rule} AND ts BETWEEN ? AND ? "
+                         "AND source!='manual' ORDER BY ABS(julianday(ts)-julianday(?)) LIMIT 1",
+                         (row["id"], row["amount"], other, lo, hi, row["ts"])).fetchone()
+
+
+def move_partners(row, minutes: int = 15) -> list:
+    """Другая половина уже помеченного перевода (для «это не мой перевод»)."""
+    ts = datetime.strptime(row["ts"], FMT)
+    lo, hi = (ts - timedelta(minutes=minutes)).strftime(FMT), (ts + timedelta(minutes=minutes)).strftime(FMT)
+    other_inc = row["category"] != "Доход"   # у половины-прихода категория «Доход», у расхода — «Переводы»
+    with _lock, _conn() as c:
+        return c.execute("SELECT * FROM tx WHERE id!=? AND kind='move' AND amount=? AND ts BETWEEN ? AND ? "
+                         f"AND category{'=' if other_inc else '!='}'Доход' LIMIT 1",
+                         (row["id"], row["amount"], lo, hi)).fetchall()
 
 
 TX_COLS = ("id", "ts", "amount", "kind", "category", "merchant", "note", "source", "raw", "wallet")
@@ -290,7 +344,7 @@ def export_csv(period: str = "all") -> str:
     w.writerow(["id", "дата", "сумма", "тип", "кошелёк", "категория", "магазин", "заметка", "источник"])
     with _lock, _conn() as c:
         for r in c.execute("SELECT * FROM tx WHERE ts>=? AND ts<? ORDER BY ts", (s.strftime(FMT), e.strftime(FMT))):
-            w.writerow([r["id"], r["ts"], r["amount"], "расход" if r["kind"] == "exp" else "доход",
+            w.writerow([r["id"], r["ts"], r["amount"], {"exp": "расход", "inc": "доход"}.get(r["kind"], "свой перевод"),
                         "бизнес" if r["wallet"] == "business" else "личное",
                         r["category"], r["merchant"], r["note"], r["source"]])
     return buf.getvalue()

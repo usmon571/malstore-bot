@@ -44,11 +44,14 @@ ALL_CATEGORIES = list(CATEGORIES) + [OTHER, INCOME_CAT]
 
 INCOME_WORDS = ("зарплат", "получил", "пришло", "доход", "зачисл", "пополнен", "popolnenie", "zachislenie", "kirim",
                 "tushum", "received", "credit", "deposit", "поступлен", "возврат", "vozvrat", "refund", "cashback",
-                "кэшбэк", "перевод от", "➕", "продажа")
+                "кэшбэк", "перевод от", "➕", "продажа", "tushdi", "tushum", "qabul qilindi", "hisobga")
 EXPENSE_WORDS = ("pokupka", "oplata", "spisanie", "списан", "оплата", "покупка", "платеж", "платёж", "purchase",
-                 "payment", "debit", "chiqim", "to'lov", "tolov", "xarid", "snyatie", "снятие", "withdraw", "➖")
-TRANSFER_WORDS = ("perevod", "перевод", "p2p", "o'tkazma", "otkazma")
-BANK_HINTS = INCOME_WORDS + EXPENSE_WORDS + TRANSFER_WORDS + (
+                 "payment", "debit", "chiqim", "to'lov", "tolov", "xarid", "snyatie", "снятие", "withdraw", "➖",
+                 "yechildi", "yechib olindi", "hisobdan", "to'landi", "tolandi", "списание")
+TRANSFER_WORDS = ("perevod", "перевод", "p2p", "o'tkazma", "otkazma", "o'tkazildi")
+# платёжные приложения: Alliance Pay (Asia Alliance Bank), Payme, Click, Uzum, Paynet
+APPS = ("alliance", "aab", "payme", "paycom", "click", "uzum", "paynet", "apelsin", "oson")
+BANK_HINTS = INCOME_WORDS + EXPENSE_WORDS + TRANSFER_WORDS + APPS + (
     "balans", "balance", "баланс", "остаток", "humo", "uzcard", "visa", "карта", "karta", "uzs", "💳", "📍")
 BUSINESS_TAGS = ("#бизнес", "#биз", "#б", "#biz", "#b")
 
@@ -65,6 +68,9 @@ class Parsed:
     currency: str = "UZS"
     wallet: str = PERSONAL
     days_ago: int = 0
+    cards: tuple = ()          # последние 4 цифры всех карт в SMS
+    brand: str = ""            # Humo / Uzcard / Visa / Mastercard
+    balance: int | None = None # остаток на карте после операции
 
 
 def to_number(tok: str) -> float:
@@ -141,16 +147,22 @@ def _symbols_to_breaks(text: str) -> str:
 
 
 _BAL_WORDS = r"balans|balance|баланс|остаток|ostatok|qoldiq|dostupno|доступно|available"
-_BAL = re.compile(rf"(?:{_BAL_WORDS})[^\d\n]{{0,12}}(?:{NUM})\s*\w{{0,4}}", re.I)
 _CUR = r"(UZS|SUM|СУМОВ|СУМ|СЎМ|SO['ʻ‘’]?M|SOM|USD|\$|EUR|€|RUB|₽)"
+_BAL = re.compile(rf"(?:{_BAL_WORDS})[^\d\n]{{0,12}}(?:{NUM})\s*(?:{_CUR}(?!\w)|\w{{0,4}})", re.I)
 _AMT_CUR = re.compile(rf"(?:{_CUR}\s*({NUM}))|(?:({NUM})\s*{_CUR}(?!\w))", re.I)
-_CARD = re.compile(r"(?<!\w)(?:humo|uzcard|visa|mastercard|master|mir|карта|karta|card|kartadan|kartaga)(?!\w)[\s*•x\d\-]*", re.I)
+_CARD = re.compile(r"(?<!\w)(?:humo(?:card)?|uzcard|visa|mastercard|master|mir|карта|karta|card|kartadan|kartaga)(?!\w)[\s*•x\d\-]*", re.I)
 _MASK = re.compile(r"[*•]{1,6}\s*\d{4}|\d{4,6}[*•x]{2,}\d{2,4}", re.I)
 _PREFIX = re.compile(r"^\s*(?:pokupka|oplata|purchase|payment|оплата|покупка|платеж|платёж|списание|spisanie|xarid|"
                      r"to'lov|tolov|chiqim|merchant|магазин|do'kon|joy|место|продавец|в|v|at|to)(?!\w)\s*[:\-@]?\s*", re.I)
 _DATE = re.compile(r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}:\d{2}(?::\d{2})?")
 _SPLIT = re.compile(r"[,;\n|]|\.\s")
 _LEGAL = re.compile(r"^(?:ooo|ооо|mchj|xk|ip|ип|llc|чп)\s+|\s+(?:ooo|mchj|llc)$", re.I)
+# «PAYME*KORZINKA», «CLICK*EVOS», «ALLIANCE PAY: Safia» → настоящий магазин после префикса приложения
+_APP_PREFIX = re.compile(r"^(?:payme|paycom|click|uzum(?:\s*bank)?|paynet|apelsin|oson|alliance(?:\s*pay)?|aab)"
+                         r"\s*[*:/\\>\-]\s*(?=\S)", re.I)
+_APP_NAME = {"payme": "Payme", "paycom": "Payme", "click": "Click", "uzum": "Uzum", "uzum bank": "Uzum",
+             "paynet": "Paynet", "apelsin": "Uzum", "oson": "Oson", "alliance": "Alliance Pay",
+             "alliance pay": "Alliance Pay", "aab": "Alliance Pay"}
 _KEYWORDS = {w for w in INCOME_WORDS + EXPENSE_WORDS + TRANSFER_WORDS} | {
     "uzs", "sum", "сум", "комиссия", "komissiya", "fee", "успешно", "muvaffaqiyatli", "approved", "summa", "сумма",
     "balans", "баланс", "остаток", "popolnenie", "pokupka", "oplata"}
@@ -163,13 +175,19 @@ def extract_merchant(text: str) -> str:
     t = _DATE.sub(" ", t)
     t = _MASK.sub(" ", t)
     t = _CARD.sub(" ", t)
+    fallback = ""
     for seg in _SPLIT.split(t):
-        seg = _PREFIX.sub("", _PREFIX.sub("", seg)).strip(" .:*-–—#№")
+        seg = _PREFIX.sub("", _PREFIX.sub("", seg.strip(" .:*-–—#№"))).strip(" .:*-–—#№")
         seg = _LEGAL.sub("", seg).strip(" \"'«»")
-        if len(re.findall(r"[^\W\d_]", seg)) < 3 or seg.lower() in _KEYWORDS:
+        seg = _APP_PREFIX.sub("", seg).strip()
+        words = re.findall(r"[^\W\d_][\w'ʻ‘’]*", seg.lower())
+        app = next((_APP_NAME[w] for w in words if w in _APP_NAME), "")
+        if len(re.findall(r"[^\W\d_]", seg)) < 3 or seg.lower() in _KEYWORDS or \
+                (words and all(w in _KEYWORDS or w in APPS for w in words)):
+            fallback = fallback or app   # «PAYCOM» без магазина — хотя бы название приложения
             continue
         return seg
-    return ""
+    return fallback
 
 
 def amount_in_text(text: str, usd_rate: float) -> tuple[int, str] | None:
@@ -191,6 +209,36 @@ def amount_in_text(text: str, usd_rate: float) -> tuple[int, str] | None:
             return int(round(val * usd_rate / 90)), "RUB"
         return int(round(val)), "UZS"
     return None
+
+
+_LAST4 = re.compile(r"(?:[*•]{1,6}\s*|\d{4,6}[*•x]{2,}\d{0,4}?)(\d{4})(?!\d)", re.I)
+_BRANDS = (("humo", "Humo"), ("uzcard", "Uzcard"), ("visa", "Visa"), ("mastercard", "Mastercard"),
+           ("unionpay", "UnionPay"), ("mir", "Mir"))
+
+
+def cards_in(text: str) -> tuple:
+    """Последние 4 цифры карт в тексте: «*4521», «HUMO ****0912», «860012******7788» → ('4521', ...)."""
+    seen = []
+    for m in _LAST4.finditer(text or ""):
+        if m.group(1) not in seen:
+            seen.append(m.group(1))
+    return tuple(seen)
+
+
+def brand_in(text: str) -> str:
+    t = (text or "").lower()
+    return next((name for key, name in _BRANDS if re.search(rf"(?<![a-z]){key}(?:card)?(?![a-z])", t)), "")
+
+
+def balance_in(text: str) -> int | None:
+    m = _BAL.search(_symbols_to_breaks(text or ""))
+    if not m:
+        return None
+    num = re.search(NUM, m.group(0))
+    try:
+        return int(round(to_number(num.group(0)))) if num else None
+    except ValueError:
+        return None
 
 
 def parse_bank(text: str, usd_rate: float = 12500) -> Parsed | None:
@@ -216,7 +264,8 @@ def parse_bank(text: str, usd_rate: float = 12500) -> Parsed | None:
         cat = INCOME_CAT
     else:
         cat = guess_category(merchant) or guess_category(text) or OTHER
-    return Parsed(amount, "inc" if inc else "exp", cat, merchant=merchant[:60], currency=cur, wallet=wallet_for(cat))
+    return Parsed(amount, "inc" if inc else "exp", cat, merchant=merchant[:60], currency=cur, wallet=wallet_for(cat),
+                  cards=cards_in(text), brand=brand_in(text), balance=balance_in(text))
 
 
 def fmt(n: int) -> str:

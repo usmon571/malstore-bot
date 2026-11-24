@@ -53,6 +53,7 @@
   <div class="card"><h3>Куда уходят деньги</h3><div class="donut"><svg id="pie" viewBox="0 0 42 42"></svg><div class="leg" id="leg"></div></div></div>
   <div class="card"><h3>Топ магазинов</h3><div id="top"></div></div>
   <div class="card full" id="bcard" hidden><h3>Лимиты на месяц</h3><div id="bud"></div></div>
+  <div class="card full" id="ccard" hidden><h3>Карты · остаток из последней SMS</h3><div id="cards"></div></div>
   <div class="card full"><h3>Последние операции</h3><div id="recent"></div></div>
 </div>
 <p class="mut"><a id="csv">Скачать CSV для Excel</a> · на iPhone: «Поделиться» → «На экран Домой»</p>
@@ -92,7 +93,10 @@ async function load(){
   $('bcard').hidden=!d.budgets.length;
   $('bud').innerHTML=d.budgets.map(b=>{const p=Math.min(100,b.spent/b.limit*100);const c=p>=100?'var(--red)':p>=80?'var(--amb)':'var(--acc)';
     return `<div style="padding:6px 0"><div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(b.category)}</span><span class="mut">${f(b.spent)} / ${f(b.limit)}</span></div><div class="bar"><i style="width:${p}%;background:${c}"></i></div></div>`}).join('');
-  $('recent').innerHTML=d.recent.map(t=>`<div class="row"><span>${t.wallet=='business'?'💼':'👤'} ${esc(t.ts.slice(8,10)+'.'+t.ts.slice(5,7)+' '+t.ts.slice(11,16))} · ${esc(t.category)} <span class="mut">${esc(t.merchant)}</span>${t.note?`<br><small class="mut">${esc(t.note)}</small>`:''}</span><b class="${t.kind}">${t.kind=='exp'?'−':'+'}${f(t.amount)}</b></div>`).join('')||'<div class="mut">Пусто</div>';
+  $('recent').innerHTML=d.recent.map(t=>`<div class="row"><span>${t.wallet=='business'?'💼':'👤'} ${esc(t.ts.slice(8,10)+'.'+t.ts.slice(5,7)+' '+t.ts.slice(11,16))} · ${esc(t.category)} <span class="mut">${esc(t.merchant)}</span>${t.note?`<br><small class="mut">${esc(t.note)}</small>`:''}</span><b class="${t.kind}">${t.kind=='move'?'🔁 ':t.kind=='exp'?'−':'+'}${f(t.amount)}</b></div>`).join('')||'<div class="mut">Пусто</div>';
+  const cs=d.cards||[];$('ccard').hidden=!cs.length;
+  $('cards').innerHTML=cs.map(c=>`<div class="row"><span>💳 ${esc(c.brand||'Карта')} *${esc(c.last4)} <span class="mut">${c.balance_ts?esc(c.balance_ts.slice(8,10)+'.'+c.balance_ts.slice(5,7)+' '+c.balance_ts.slice(11,16)):''}</span></span><b>${c.balance==null?'—':f(c.balance)}</b></div>`).join('')
+    +(cs.filter(c=>c.balance!=null).length>1?`<div class="row"><span>Всего</span><b>${f(cs.reduce((a,c)=>a+(c.balance||0),0))}</b></div>`:'');
   // bars by day
   const bd=d.by_day,W=600,H=160,m=Math.max(1,...bd.map(x=>x.s)),w=W/Math.max(bd.length,14);
   $('days').innerHTML=bd.map((x,i)=>{const h=Math.max(2,x.s/m*(H-10));return `<rect x="${i*w+w*.12}" y="${H-h}" width="${Math.max(1,w*.76)}" height="${h}" rx="2" fill="var(--acc)"><title>${x.d}: ${f(x.s)}</title></rect>`}).join('');

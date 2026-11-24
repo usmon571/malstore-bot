@@ -145,9 +145,14 @@ def tg(method: str, **payload):
 
 def tx_buttons(row) -> list[list[tuple[str, str]]]:
     """Кнопки под записью: (текст, callback_data)."""
+    if row["kind"] == "move":
+        return [[("↩️ Это не мой перевод", f"notown:{row['id']}"), ("🗑", f"del:{row['id']}")]]
     other = parsing.BUSINESS if row["wallet"] == parsing.PERSONAL else parsing.PERSONAL
-    return [[("🏷 Категория", f"cats:{row['id']}"), (f"→ {WALLET_LABEL[other]}", f"wal:{row['id']}:{other}"),
+    rows = [[("🏷 Категория", f"cats:{row['id']}"), (f"→ {WALLET_LABEL[other]}", f"wal:{row['id']}:{other}"),
              ("🗑", f"del:{row['id']}")]]
+    if is_transferish(row):
+        rows.append([("🔁 Перевод между моими картами", f"own:{row['id']}")])
+    return rows
 
 
 def tx_keyboard_json(row) -> dict:
@@ -155,9 +160,11 @@ def tx_keyboard_json(row) -> dict:
 
 
 def describe(r) -> str:
+    day = "" if r["ts"][:10] == ledger.now().strftime("%Y-%m-%d") else f" · {r['ts'][8:10]}.{r['ts'][5:7]}"
+    if r["kind"] == "move":
+        return f"🔁 {fmt(r['amount'])} сум · перевод между своими картами (не расход){day}"
     sign = "−" if r["kind"] == "exp" else "+"
     who = f" · {r['merchant']}" if r["merchant"] else ""
-    day = "" if r["ts"][:10] == ledger.now().strftime("%Y-%m-%d") else f" · {r['ts'][8:10]}.{r['ts'][5:7]}"
     icon = "💼" if r["wallet"] == parsing.BUSINESS else "👤"
     return f"{icon} {sign}{fmt(r['amount'])} сум · {r['category']}{who}{day}"
 
@@ -175,8 +182,38 @@ def budget_warning(category: str) -> str:
     return ""
 
 
+def is_transferish(row) -> bool:
+    """Может быть половиной перевода между своими картами: перевод-расход или любой приход."""
+    return row["kind"] == "inc" or (row["kind"] == "exp" and row["category"] == "Переводы")
+
+
+def mark_own_transfer(row) -> object:
+    """Пометить запись (и вторую половину перевода, если есть) как перевод между своими картами."""
+    ledger.set_kind(row["id"], "move")
+    pair = ledger.transfer_pair(row)
+    if pair:
+        ledger.set_kind(pair["id"], "move")
+    for last4 in parsing.cards_in(row["raw"] or ""):  # карты из такого SMS — тоже свои
+        ledger.card_seen(last4, parsing.brand_in(row["raw"]))
+    return ledger.get(row["id"])
+
+
+def unmark_own_transfer(row) -> object:
+    """«Это не мой перевод»: вернуть обе половины в расход/доход."""
+    for r in [row] + ledger.move_partners(row):
+        ledger.set_kind(r["id"], "inc" if r["category"] == parsing.INCOME_CAT else "exp")
+    return ledger.get(row["id"])
+
+
+def _remember_cards(p: parsing.Parsed) -> None:
+    """Карта из SMS — своя (SMS приходит владельцу). Если карт в SMS несколько (перевод) — не гадаем, чья."""
+    if len(p.cards) == 1:
+        ledger.card_seen(p.cards[0], p.brand, p.balance)
+
+
 def record(p: parsing.Parsed, source: str, raw: str = "", ts=None, check_dup: bool = True):
     """Сохраняет запись. Возвращает (row | None, duplicate: bool)."""
+    _remember_cards(p)  # остаток обновляем даже для дубликата (Apple Pay уже записал покупку, SMS принесла баланс)
     if check_dup and ledger.is_duplicate(p.amount, p.kind, source):
         return None, True
     cat, wallet = p.category, p.wallet
@@ -188,7 +225,13 @@ def record(p: parsing.Parsed, source: str, raw: str = "", ts=None, check_dup: bo
         if l_wal:
             wallet = l_wal
     tx_id = ledger.add(p.amount, p.kind, cat, p.merchant, p.note, source, raw, wallet, p.days_ago, ts=ts)
-    return ledger.get(tx_id), False
+    row = ledger.get(tx_id)
+    if source != "manual" and is_transferish(row):
+        own = ledger.own_cards()
+        # 1) в SMS обе карты свои; 2) пришла вторая половина перевода (та же сумма, ±15 минут)
+        if (len(p.cards) >= 2 and all(c in own for c in p.cards)) or ledger.transfer_pair(row):
+            row = mark_own_transfer(row)
+    return row, False
 
 
 # ---------- чеки soliq.uz ----------

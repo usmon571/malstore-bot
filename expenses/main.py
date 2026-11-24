@@ -43,13 +43,14 @@ HELP = (
     "• <code>+3 млн зарплата</code> — доход\n"
     "• <code>вчера 20000 бензин</code> — задним числом\n"
     "• <code>500000 карго #б</code> — в 💼 бизнес (карго, товары, реклама попадают туда сами)\n"
-    "• Перешлите SMS/уведомление Humo, Uzcard или банка — разберу сам\n"
+    "• Перешлите SMS/уведомление Humo, Uzcard или банка — разберу сам. Автоматически (Alliance Pay, Payme) — /sms\n"
     "• Apple Pay — один раз настройте /apple, дальше всё автоматически\n"
     "• 🧾 Фото QR-кода с чека (soliq.uz) или ссылка из него — запишу магазин, сумму и товары\n\n"
     "<b>Исправить</b>: кнопки под записью, или ответьте (reply) на запись новой суммой.\n\n"
     "<b>Команды</b>\n/today /week /month — отчёты\n/dash — дашборд с графиками\n"
     "/find корзинка — поиск\n/limit еда 2000000 — лимит в месяц (0 — снять), /limits\n"
-    "/undo — удалить последнюю · /export — Excel/CSV\n/apple — Apple Pay · /status — адреса сервера"
+    "/cards — карты и остатки (переводы между своими картами — не расход)\n"
+    "/undo — удалить последнюю · /export — Excel/CSV\n/apple — Apple Pay · /sms — SMS банка · /status — адреса сервера"
 )
 
 TITLES = {"today": "Сегодня", "week": "Последние 7 дней", "month": "Этот месяц",
@@ -279,6 +280,59 @@ async def apple(u, c):
         parse_mode="HTML", disable_web_page_preview=True)
 
 
+def cards_text() -> str:
+    rows = [r for r in ledger.cards()]
+    if not rows:
+        return ""
+    lines, total = [], 0
+    for r in rows:
+        name = f"{r['brand'] or 'Карта'} *{r['last4']}"
+        if r["balance"] is not None:
+            total += r["balance"]
+            lines.append(f"💳 {name} — <b>{fmt(r['balance'])}</b> сум · {r['balance_ts'][8:10]}.{r['balance_ts'][5:7]} "
+                         f"{r['balance_ts'][11:16]}")
+        else:
+            lines.append(f"💳 {name} — остаток ещё не приходил")
+    if total and len(lines) > 1:
+        lines.append(f"Всего на картах: <b>{fmt(total)}</b> сум")
+    return "\n".join(lines)
+
+
+async def cards_cmd(u, c):
+    if not await guard(u):
+        return
+    t = cards_text()
+    await u.message.reply_text(
+        (f"<b>Мои карты</b> (остаток из последней SMS банка)\n{t}\n\n" if t else
+         "Карт пока нет — они появятся сами из SMS банка (/sms).\n\n") +
+        "Переводы между своими картами не считаются расходом: бот находит обе SMS (та же сумма, ±15 минут) "
+        "или кнопка «🔁 Перевод между моими картами» под записью.",
+        parse_mode="HTML")
+
+
+async def sms(u, c):
+    """SMS банка (Alliance Pay / Asia Alliance Bank, Humo, Uzcard — и всё, что оплачено через Payme/Click с карты)."""
+    if not await guard(u):
+        return
+    url = f"{core.base_url()}/api/ingest?key={core.secret()}&source=sms"
+    await u.message.reply_text(
+        "📩 <b>SMS банка → бот автоматически</b> (Alliance Pay, Payme, Click…)\n\n"
+        "У Alliance Pay и Payme нет открытого API, но каждая оплата с карты Humo/Uzcard приходит SMS от банка — "
+        "её и будем пересылать. Платежи через Payme тоже приходят этой SMS.\n\n"
+        "1. iPhone → <b>Команды</b> → <b>Автоматизация</b> → «+» → <b>Сообщение</b>.\n"
+        "2. <b>Отправитель</b> → выберите номер, с которого приходят SMS о покупках "
+        "(например <code>AAB</code>, <code>HUMO</code> или <code>UZCARD</code>). "
+        "«Запускать сразу» ✅ → <b>Далее</b> → <b>Новая пустая автоматизация</b>.\n"
+        "3. Действие <b>«Получить содержимое URL»</b>:\n"
+        f"   URL: <code>{url}</code>\n"
+        "   Метод <b>POST</b>, Тело запроса <b>JSON</b>, поле:\n"
+        "   • <code>text</code> → «Входные данные команды» → <b>Содержимое</b>\n"
+        "4. Готово. Повторите для каждого отправителя (банк, HUMO, UZCARD).\n\n"
+        "Покупка из Apple Pay и та же SMS не посчитаются дважды. "
+        "Без автоматизации SMS можно просто переслать сюда. Чек из Payme — скриншот QR или ссылка, как обычный чек.",
+        parse_mode="HTML", disable_web_page_preview=True)
+
+
 BUTTONS = {"📅 Сегодня": today, "🗓 Неделя": week, "📆 Месяц": month,
            "📊 Дашборд": dash, "↩️ Отменить": undo, "↩️ Отменить последнее": undo, "❓ Помощь": help_cmd}
 
@@ -424,6 +478,13 @@ async def cb(u: Update, c):
         row = ledger.get(tx_id)
         extra = "\n(запомнил для этого магазина)" if row["merchant"] else ""
         await q.edit_message_text("✅ " + core.describe(row) + extra, reply_markup=tx_kb(row))
+    elif act == "own":
+        row = core.mark_own_transfer(row)
+        await q.edit_message_text("✅ " + core.describe(row) + "\n(вторая половина перевода — тоже, если нашлась)",
+                                  reply_markup=tx_kb(row))
+    elif act == "notown":
+        row = core.unmark_own_transfer(row)
+        await q.edit_message_text("✅ " + core.describe(row), reply_markup=tx_kb(row))
     elif act == "wal":
         ledger.set_wallet(tx_id, rest.split(":")[1])
         row = ledger.get(tx_id)
@@ -467,7 +528,9 @@ async def nightly(c: ContextTypes.DEFAULT_TYPE):
                                  parse_mode="HTML", reply_markup=MENU)
     else:
         period = "yesterday" if late else "today"
-        await c.bot.send_message(owner, "🌙 " + report(period), parse_mode="HTML", reply_markup=report_kb(period, None))
+        bal = cards_text()
+        await c.bot.send_message(owner, "🌙 " + report(period) + (f"\n\n{bal}" if bal else ""), parse_mode="HTML",
+                                 reply_markup=report_kb(period, None))
     if day.weekday() == 6:
         await c.bot.send_message(owner, "📈 Итог недели\n" + report("week", ref=day), parse_mode="HTML",
                                  reply_markup=report_kb("week", None))
@@ -486,9 +549,9 @@ async def catch_up(c: ContextTypes.DEFAULT_TYPE):
 
 
 COMMANDS = [("today", "Итог за сегодня"), ("week", "Последние 7 дней"), ("month", "Этот месяц"),
-            ("dash", "Дашборд с графиками"), ("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
+            ("dash", "Дашборд с графиками"), ("cards", "Карты и остатки"),("find", "Поиск: /find корзинка"), ("limit", "Лимит: /limit кафе 800к"),
             ("limits", "Все лимиты"), ("undo", "Удалить последнюю запись"), ("export", "Скачать CSV для Excel"),
-            ("apple", "Настроить Apple Pay"), ("status", "Адреса сервера"), ("help", "Как пользоваться")]
+            ("apple", "Настроить Apple Pay"), ("sms", "SMS банка, Alliance Pay, Payme"),("status", "Адреса сервера"), ("help", "Как пользоваться")]
 
 
 async def post_init(app: Application):
@@ -527,7 +590,7 @@ def main():
            .media_write_timeout(60).pool_timeout(10).post_init(post_init).build())
     for name, fn in [("start", start), ("help", help_cmd), ("today", today), ("week", week), ("month", month),
                      ("dash", dash), ("status", status), ("undo", undo), ("export", export), ("find", find),
-                     ("limit", limit), ("limits", limits), ("apple", apple)]:
+                     ("limit", limit), ("limits", limits), ("apple", apple), ("sms", sms), ("cards", cards_cmd)]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(MessageHandler(filters.ALL, trace), group=-1)
     app.add_handler(CallbackQueryHandler(cb))
