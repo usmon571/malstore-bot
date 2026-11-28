@@ -37,6 +37,7 @@ from telegram import (
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
@@ -47,6 +48,7 @@ from telegram.ext import (
 )
 
 import api
+import selfupdate
 import settings
 import store
 from scraper import extract_poizon_url, fetch_product
@@ -2512,6 +2514,9 @@ def main() -> None:
 
     app = Application.builder().token(settings.BOT_TOKEN).build()
     app.add_error_handler(on_error)
+    # Admin yuborgan ZIP — kod yangilanishi. Alohida guruhda, hamma suhbatlardan oldin tekshiriladi;
+    # admin bo'lmasa, fayl odatdagi handlerlarga (to'lov cheki va h.k.) o'tadi.
+    app.add_handler(MessageHandler(filters.Document.FileExtension("zip"), update_zip), group=-1)
 
     # Mini App tugmasi klaviaturada turgani uchun undan kelgan ma'lumot
     # suhbatning istalgan bosqichida qabul qilinishi kerak
@@ -2682,6 +2687,82 @@ async def remember_bot_username(app: Application) -> None:
     me = await app.bot.get_me()
     BOT_USERNAME = me.username
     log.info("Bot: @%s | tovarlar: %s", BOT_USERNAME, store.product_count())
+    await announce_update(app)
+
+
+# ---------- Telegram orqali yangilash (admin ZIP yuboradi) ----------
+
+UPDATE_MARK = selfupdate.BASE / "backups" / "update_pending.txt"
+
+
+def can_update(update: Update) -> bool:
+    """Kodni faqat admin yangilaydi: sozlamadagi ADMIN_ID'lar, ular berilmagan bo'lsa — ruxsat etilgan username."""
+    user = update.effective_user
+    if not user:
+        return False
+    if settings.ADMIN_IDS:
+        return user.id in settings.ADMIN_IDS
+    return is_allowed(update)
+
+
+async def update_zip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin yuborgan ZIP: tekshirish -> fayllarni almashtirish -> qayta ishga tushish.
+    Admin bo'lmaganlarning fayli odatdagidek (masalan, to'lov cheki) keyingi handlerlarga o'tadi."""
+    if not can_update(update):
+        return
+    msg = update.effective_message
+    if selfupdate.on_railway():
+        await msg.reply_text("Bot Railway'da ishlayapti: u yerda yangilash GitHub'ga push orqali bo'ladi.")
+        raise ApplicationHandlerStop
+    wait = await msg.reply_text("📦 Arxivni oldim. Tekshiryapman — bir-ikki daqiqa…")
+    try:
+        f = await msg.document.get_file(read_timeout=120)
+        data = bytes(await f.download_as_bytearray(read_timeout=120))
+        res = await asyncio.to_thread(selfupdate.apply, data)
+    except selfupdate.UpdateError as e:
+        await wait.edit_text(f"❌ Yangilanmadi: {e}")
+        raise ApplicationHandlerStop
+    except Exception as e:  # noqa: BLE001
+        log.exception("yangilash")
+        await wait.edit_text(f"❌ Yangilanmadi: {e}")
+        raise ApplicationHandlerStop
+    if not res["changed"]:
+        await wait.edit_text("👌 Kod allaqachon shunday — yangilanadigan narsa yo'q.")
+        raise ApplicationHandlerStop
+    changed = res["changed"]
+    names = ", ".join(changed[:8]) + (f" va yana {len(changed) - 8} ta" if len(changed) > 8 else "")
+    lines = [f"✅ Yangilandi: {len(changed)} ta fayl ({names})", f"🧪 {res['check']}"]
+    if res["deps"]:
+        lines.append("📚 Kutubxonalar yangilandi")
+    if res["kept"]:
+        lines.append(f"⚠️ Almashtirilmadi (hozir ishlayapti): {', '.join(res['kept'])} — buni update.bat qiladi")
+    lines.append(f"💾 Eski fayllar: backups/{res['backup'].name}")
+    lines.append("🔄 Qayta ishga tushyapman, ~15 soniyada qaytaman…")
+    await wait.edit_text("\n".join(lines))
+    try:
+        UPDATE_MARK.parent.mkdir(exist_ok=True)
+        UPDATE_MARK.write_text(str(msg.chat_id), encoding="utf-8")
+    except OSError as e:
+        log.warning("yangilash belgisi yozilmadi: %s", e)
+    plan = await asyncio.to_thread(selfupdate.restart_plan)
+    if plan == "spawn":
+        await asyncio.to_thread(selfupdate.spawn_new)
+    log.info("yangilash qo'llandi, qayta ishga tushish (%s)", plan)
+    context.application.stop_running()
+    raise ApplicationHandlerStop
+
+
+async def announce_update(app: Application) -> None:
+    """Yangilashdan keyin qayta yoqilganda — yuborgan adminga xabar."""
+    try:
+        chat = UPDATE_MARK.read_text(encoding="utf-8").strip()
+    except OSError:
+        return
+    try:
+        UPDATE_MARK.unlink()
+        await app.bot.send_message(int(chat), "🔄 Bot qayta ishga tushdi — yangi versiya ishlayapti.")
+    except Exception as e:  # noqa: BLE001
+        log.warning("yangilash haqida xabar yuborilmadi: %s", e)
 
 
 async def start_order_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

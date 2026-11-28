@@ -12,3 +12,6 @@ translation_cache.json
 poizon_session.json
 bot.log
 login_screen.png
+
+# Telegram orqali yangilashda eski kod nusxalari
+backups/
